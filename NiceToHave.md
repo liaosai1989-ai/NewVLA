@@ -46,9 +46,9 @@
 | ID | 功能点 | 优先级 | 状态 | 提出时间 | spec 索引 | plan 索引 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | NTH-001 | 重构 Dify 上传模块 | P1 | 已实现 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-dify-upload-rebuild-design.md` | `docs/superpowers/plans/2026-04-26-dify-upload-rebuild-implementation-plan.md` | 已按 plan 完成纯 CSV 上传模块重建 |
-| NTH-002 | webhook 补齐 Dify 目标配置合同 | P1 | 待评估 | 2026-04-26 | - | - | 当前 webhook 设计仅稳定覆盖 `dataset_id`，未明确 `api_base`、`api_key` |
+| NTH-002 | webhook 补齐 Dify 目标配置合同 | P1 | 已出 spec | 2026-04-26 | `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | - | 当前 webhook 设计仅稳定覆盖 `dataset_id`，现已明确 `api_base`、`api_key` 走模块根 `.env`，`dataset_id` 必须运行时显式传入 |
 | NTH-003 | RQ 并发多个 Cursor CLI 的设计与实现优化 | P1 | 待评估 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-webhook-cursor-executor-design.md` | - | 当前 spec 已覆盖基础并发语义，后续需单独优化稳定性与实现细节 |
-| NTH-004 | 根目录 .env 与各模块配置消费合同收口 | P1 | 待评估 | 2026-04-26 | - | - | 统一配置文件已整理，但 `webhook`、`dify_upload`、`feishu_fetch` 与 legacy 配置的实际消费边界尚未完全对齐 |
+| NTH-004 | 根目录 .env 与各模块配置消费合同收口 | P1 | 已出 spec | 2026-04-26 | `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | - | 已明确各模块直接消费根 `.env` 各自分组，LLM 不注入基础设施配置，legacy Feishu 维持兼容保留 |
 
 ## 正文记录
 
@@ -99,7 +99,7 @@
 ## NTH-002 webhook 补齐 Dify 目标配置合同
 
 - 提出时间：2026-04-26
-- 当前状态：待评估
+- 当前状态：已出 spec
 - 优先级：P1
 - 背景/问题：
   - 当前 webhook 相关设计里，运行时合同稳定覆盖的是 `dataset_id`。
@@ -118,28 +118,29 @@
   - 运行时合同
   - `dify_upload` 调用适配层
 - spec 索引：
-  - -
+  - `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md`
 - plan 索引：
   - -
 - 备注：
-  - 当前仅记录问题点，后续需单独判断是否立新 spec。
+  - 已与 `NTH-004` 合并收口。
+  - 已确定 `dataset_id` 必须运行时显式传入，根 `.env` 不允许提供默认值。
 
-### 方案草案
+### 方案结论
 
-- 方案一：继续只在运行时注入 `dataset_id`，`api_base`、`api_key` 由工作区或进程本地配置提供，再由适配层组装完整目标。
-- 方案二：扩展 webhook 运行时合同，把完整 Dify 目标一起注入。
-- 方案三：引入独立配置映射层，但仍保持 `dify_upload` 只吃解析后的目标。
+- `dataset_id` 必须由运行时显式传入。
+- `api_base`、`api_key` 由 `dify_upload` 自己从根 `.env` 读取。
+- LLM / `task_context.json` 不注入 Dify 静态连接配置。
 
 ### 验收标准
 
-- webhook 侧明确 `api_base`、`api_key` 的来源与责任层。
-- `dify_upload` 的输入合同能与 webhook 设计闭环。
-- 不再依赖实现阶段临时猜测 Dify 目标配置来源。
+- webhook 侧明确 `api_base`、`api_key` 不进入运行时合同。
+- `dify_upload` 的输入合同与 `dataset_id` 显式传入口径闭环。
+- 根 `.env` 不再承担默认 `dataset_id` 注入职责。
 
 ## NTH-003 RQ 并发多个 Cursor CLI 的设计与实现优化
 
 - 提出时间：2026-04-26
-- 当前状态：待评估
+- 当前状态：已出 spec
 - 优先级：P1
 - 背景/问题：
   - 当前 webhook spec 已定义“多文档可并发、单文档尽量不并发”的基础语义。
@@ -201,20 +202,21 @@
   - `feishu_fetch/`
   - 相关 README / spec / plan 文档
 - spec 索引：
-  - -
+  - `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md`
 - plan 索引：
   - -
 - 备注：
-  - 本条是配置治理型待优化点，当前先记录问题，不直接改变现有模块边界。
+  - 已与 `NTH-002` 合并收口。
+  - 已明确各模块直接消费根 `.env` 各自配置分组，不新增独立 resolver 层。
 
-### 方案草案
+### 方案结论
 
-- 方案一：保持 `webhook` 继续直接读根 `.env`，`dify_upload` 与 `feishu_fetch` 通过单独适配层从根配置组装运行参数。
-- 方案二：为 `dify_upload`、`feishu_fetch` 各自补最小 `from_env` 入口，但仍不让业务路由逻辑进入模块内部。
-- 方案三：把 legacy Feishu 配置单独迁到兼容分组或独立文件，根 `.env` 只保留当前主链路必需配置。
+- `webhook`、`dify_upload`、`feishu_fetch` 都直接读取根 `.env` 中属于自己的配置分组。
+- LLM 只传业务运行时参数，不传 `api_key`、`app_secret`、命令路径、默认超时这类静态配置。
+- legacy Feishu 配置继续保留在根 `.env`，但不扩大主链路默认依赖。
 
 ### 验收标准
 
-- 能明确说清每一组配置由谁读取、在哪一层组装、传给谁。
+- 能明确说清每一组配置由哪个模块直接读取。
 - `webhook`、`dify_upload`、`feishu_fetch` 的配置来源不再互相打架。
 - legacy Feishu 配置的定位清晰，不再长期处于“先留着但没人负责”的状态。
