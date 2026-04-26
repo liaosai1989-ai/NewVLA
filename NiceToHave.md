@@ -288,7 +288,7 @@
   - 仓库根 `.env` 回写逻辑
   - 与 `folder_token` 相关的映射配置流程
 - spec 索引：
-  - -
+  - `docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md`
 - plan 索引：
   - -
 - 备注：

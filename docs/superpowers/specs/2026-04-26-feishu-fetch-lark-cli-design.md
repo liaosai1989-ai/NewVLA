@@ -1,5 +1,17 @@
 # Feishu Fetch Lark CLI Design
 
+## 修订说明（2026-04-26 单应用 bot 抓取前提补充）
+
+本文件以下正文保留原文，不直接改写原设计内容。
+
+针对后续确认的 `lark-cli` 工作区初始化口径，现补充以下修订说明；若与正文旧表述冲突，以本修订说明为准：
+
+- 第一版 `feishu_fetch` 抓取链路默认建立在“单工作区 + 单飞书应用 bot 身份”前提上
+- 仓库根 `.env` 中飞书侧只允许一组 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 作为当前工作区初始化来源，不支持按 route 或单次任务切换不同飞书应用
+- 所有进入该抓取链路的目标文档，必须事先对这同一个飞书应用 bot 身份可访问
+- 若目标文档对该应用不可访问，应按“应用权限不足”处理，而不是在 `feishu_fetch` 运行时切换应用身份兜底
+- `feishu_fetch` 不负责推断当前请求应绑定哪个飞书应用；相关初始化边界以 [2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md](file:///c:/WorkPlace/NewVLA/docs/superpowers/specs/2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md) 为准
+
 ## 1. 背景与目标
 
 本设计用于重构旧的 `old_code/feishu_fetch` 参考实现，在 `c:\WorkPlace\NewVLA\feishu_fetch` 下建设新的飞书正文抓取模块。

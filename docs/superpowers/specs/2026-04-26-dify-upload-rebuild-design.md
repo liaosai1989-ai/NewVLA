@@ -1,17 +1,19 @@
 # Dify Upload Rebuild Design
 
-## 更新说明
+## 修订说明
 
 `dify_upload` 的配置来源口径已由 [2026-04-26-root-env-and-dify-target-contract-design.md](file:///c:/WorkPlace/NewVLA/docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md) 覆盖。
 
-当前应以新口径为准：
+本文件以下正文保留原文，不直接改写原设计内容。
+
+当前应以以下修订口径为准：
 
 - `dify_upload` 直接从仓库根 `.env` 读取静态 Dify 配置
 - `dify_upload` 按运行时显式传入的 `dify_target_key` 命中对应 Dify 实例配置
 - `dataset_id` 必须来自运行时显式传入
 - 根 `.env` 不允许提供默认 `DIFY_DATASET_ID`
 
-本文件中凡是提到“由模块外适配层组装完整 Dify 目标”的表述，均以上述新口径为准理解。
+本文件中凡是提到“由模块外适配层组装完整 Dify 目标”的表述，均以上述修订口径为准理解。
 
 ## 1. 背景与目标
 

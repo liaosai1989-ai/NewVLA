@@ -26,7 +26,8 @@ feishu_fetch/
 ## 依赖前提
 
 - 运行 `cloud_docx` 或 `drive_file` 前，环境里必须能直接执行 `lark-cli`
-- 只有命中 `.doc`、`.docx`、`.ppt`、`.pptx`、`.xls`、`.xlsx`、`.pdf` 转换路径时，才需要 `MarkItDown`
+- 新代码在命中 `.doc`、`.docx`、`.ppt`、`.pptx`、`.xls`、`.xlsx`、`.pdf` 转换路径时，固定使用 `MarkItDown`
+- 不暴露 `MARKITDOWN_COMMAND` 之类的配置项来切换转换器
 - 模块只检测依赖，不负责自动安装
 
 ## 使用方式
