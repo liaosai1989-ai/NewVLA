@@ -18,9 +18,17 @@ class FakeQueue:
     def enqueue(self, job_name: str, **kwargs) -> None:
         self.calls.append((job_name, kwargs))
 
+def test_default_webhook_path_is_stable():
+    settings = ExecutorSettings()
+
+    assert settings.feishu_webhook_path == "/webhook/feishu"
+
 
 def test_webhook_uses_redis_event_seen_and_enqueues_schedule():
-    settings = ExecutorSettings(feishu_encrypt_key="")
+    settings = ExecutorSettings(
+        feishu_encrypt_key="",
+        feishu_verification_token="",
+    )
     routing = RoutingConfig(
         pipeline_workspace=PipelineWorkspace(
             path="C:\\workspaces\\pipeline",
@@ -58,7 +66,10 @@ def test_webhook_uses_redis_event_seen_and_enqueues_schedule():
 
 
 def test_url_verification_returns_challenge():
-    settings = ExecutorSettings(feishu_encrypt_key="")
+    settings = ExecutorSettings(
+        feishu_encrypt_key="",
+        feishu_verification_token="",
+    )
     routing = RoutingConfig(
         pipeline_workspace=PipelineWorkspace(
             path="C:\\workspaces\\pipeline",
@@ -133,7 +144,10 @@ def test_url_verification_rejects_invalid_verification_token():
 
 
 def test_bad_body_returns_400():
-    settings = ExecutorSettings(feishu_encrypt_key="")
+    settings = ExecutorSettings(
+        feishu_encrypt_key="",
+        feishu_verification_token="",
+    )
     routing = RoutingConfig(
         pipeline_workspace=PipelineWorkspace(
             path="C:\\workspaces\\pipeline",

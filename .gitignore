@@ -10,3 +10,5 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+test_tool/runtime/
+feishu_fetch/.tmp_mock_cli*/

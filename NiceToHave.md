@@ -45,9 +45,10 @@
 
 | ID | 功能点 | 优先级 | 状态 | 提出时间 | spec 索引 | plan 索引 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NTH-001 | 重构 Dify 上传模块 | P1 | 规划中 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-dify-upload-rebuild-design.md` | - | 旧代码仅作参考，新模块收窄为纯上传边界 |
+| NTH-001 | 重构 Dify 上传模块 | P1 | 已实现 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-dify-upload-rebuild-design.md` | `docs/superpowers/plans/2026-04-26-dify-upload-rebuild-implementation-plan.md` | 已按 plan 完成纯 CSV 上传模块重建 |
 | NTH-002 | webhook 补齐 Dify 目标配置合同 | P1 | 待评估 | 2026-04-26 | - | - | 当前 webhook 设计仅稳定覆盖 `dataset_id`，未明确 `api_base`、`api_key` |
 | NTH-003 | RQ 并发多个 Cursor CLI 的设计与实现优化 | P1 | 待评估 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-webhook-cursor-executor-design.md` | - | 当前 spec 已覆盖基础并发语义，后续需单独优化稳定性与实现细节 |
+| NTH-004 | 根目录 .env 与各模块配置消费合同收口 | P1 | 待评估 | 2026-04-26 | - | - | 统一配置文件已整理，但 `webhook`、`dify_upload`、`feishu_fetch` 与 legacy 配置的实际消费边界尚未完全对齐 |
 
 ## 正文记录
 
@@ -56,7 +57,7 @@
 ## NTH-001 重构 Dify 上传模块
 
 - 提出时间：2026-04-26
-- 当前状态：规划中
+- 当前状态：已实现
 - 优先级：P1
 - 背景/问题：
   - 现有 `old_code/dify_upload` 只是最小参考实现。
@@ -77,9 +78,10 @@
 - spec 索引：
   - `docs/superpowers/specs/2026-04-26-dify-upload-rebuild-design.md`
 - plan 索引：
-  - -
+  - `docs/superpowers/plans/2026-04-26-dify-upload-rebuild-implementation-plan.md`
 - 备注：
   - 旧代码只作参考，不直接搬运。
+  - 2026-04-26 已按 spec 与 plan 完成落地，现模块收敛为纯 CSV 上传边界，提供结构化返回与清晰异常模型。
 
 ### 方案草案
 
@@ -173,3 +175,46 @@
 - 明确 RQ 并发多个 Cursor CLI 的实现边界与风险点。
 - 并发运行时不破坏现有 `run_id` 目录隔离与单文档互斥语义。
 - 不因并发补丁引入明显过度设计或额外系统复杂度。
+
+## NTH-004 根目录 .env 与各模块配置消费合同收口
+
+- 提出时间：2026-04-26
+- 当前状态：待评估
+- 优先级：P1
+- 背景/问题：
+  - 当前仓库根目录 `.env` 已完成按模块分组整理，覆盖了 `webhook`、`dify_upload`、`feishu_fetch` 以及用户要求保留的 legacy Feishu 集成配置。
+  - 但目前真正直接从根 `.env` 读取的主要还是 `webhook`。
+  - `dify_upload` 当前吃的是显式传入的结构化目标配置，`feishu_fetch` 计划中也还未正式落地到根配置消费层。
+  - 这会导致“配置已经集中整理”和“代码实际如何消费这些配置”之间仍有缝。
+- 目标：
+  - 明确哪些配置必须由模块直接从根 `.env` 读取。
+  - 明确哪些配置只应由适配层组装后传入模块。
+  - 明确 legacy Feishu 配置是长期保留、迁移过渡，还是后续待下线。
+- 预期收益：
+  - 避免根 `.env` 继续变成“只堆键名、不清楚谁在用”的杂物间。
+  - 降低后续实现 `dify_upload`、`feishu_fetch` 时的临时猜测和重复改配置。
+  - 让配置边界与模块边界一致，后续排障更直接。
+- 影响范围：
+  - 仓库根 `.env`
+  - `webhook/`
+  - `dify_upload/`
+  - `feishu_fetch/`
+  - 相关 README / spec / plan 文档
+- spec 索引：
+  - -
+- plan 索引：
+  - -
+- 备注：
+  - 本条是配置治理型待优化点，当前先记录问题，不直接改变现有模块边界。
+
+### 方案草案
+
+- 方案一：保持 `webhook` 继续直接读根 `.env`，`dify_upload` 与 `feishu_fetch` 通过单独适配层从根配置组装运行参数。
+- 方案二：为 `dify_upload`、`feishu_fetch` 各自补最小 `from_env` 入口，但仍不让业务路由逻辑进入模块内部。
+- 方案三：把 legacy Feishu 配置单独迁到兼容分组或独立文件，根 `.env` 只保留当前主链路必需配置。
+
+### 验收标准
+
+- 能明确说清每一组配置由谁读取、在哪一层组装、传给谁。
+- `webhook`、`dify_upload`、`feishu_fetch` 的配置来源不再互相打架。
+- legacy Feishu 配置的定位清晰，不再长期处于“先留着但没人负责”的状态。
