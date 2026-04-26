@@ -18,7 +18,6 @@ class FakeQueue:
     def enqueue(self, job_name: str, **kwargs) -> None:
         self.calls.append((job_name, kwargs))
 
-
 def test_default_webhook_path_is_stable():
     settings = ExecutorSettings()
 
