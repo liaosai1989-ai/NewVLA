@@ -1,0 +1,178 @@
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+from datetime import datetime, timezone
+from typing import Any
+
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from redis import Redis
+from rq import Queue
+
+from webhook_cursor_executor.models import DocumentSnapshot
+from webhook_cursor_executor.settings import (
+    ExecutorSettings,
+    FolderRoute,
+    RoutingConfig,
+    get_executor_settings,
+    load_routing_config,
+)
+from webhook_cursor_executor.state_store import RedisStateStore
+from webhook_cursor_executor.worker import RQQueueAdapter
+
+
+def verify_signature(
+    timestamp: str,
+    nonce: str,
+    encrypt_key: str,
+    body: bytes,
+    signature: str,
+) -> bool:
+    if not encrypt_key:
+        return True
+    digest = hashlib.sha256(f"{timestamp}{nonce}{encrypt_key}".encode("utf-8") + body)
+    return digest.hexdigest() == signature
+
+
+def parse_request_body(encrypt_key: str, body: bytes) -> dict[str, Any]:
+    data = json.loads(body.decode("utf-8"))
+    if "encrypt" not in data or not encrypt_key:
+        return data
+    key = hashlib.sha256(encrypt_key.encode("utf-8")).digest()
+    raw = base64.b64decode(data["encrypt"])
+    iv, ciphertext = raw[:16], raw[16:]
+    plaintext = unpad(AES.new(key, AES.MODE_CBC, iv).decrypt(ciphertext), AES.block_size)
+    return json.loads(plaintext.decode("utf-8"))
+
+
+def resolve_folder_route(
+    routing_config: RoutingConfig,
+    folder_token: str,
+) -> FolderRoute | None:
+    for route in routing_config.folder_routes:
+        if route.folder_token == folder_token:
+            return route
+    return None
+
+
+def verification_token_ok(
+    payload: dict[str, Any],
+    settings: ExecutorSettings,
+) -> bool:
+    expected = settings.feishu_verification_token.strip()
+    if not expected:
+        return True
+
+    header = payload.get("header") or {}
+    token = header.get("token") if isinstance(header.get("token"), str) else None
+    if token is None and isinstance(payload.get("token"), str):
+        token = payload.get("token")
+    return token == expected
+
+
+class InlineQueue:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def enqueue(self, job_name: str, **kwargs) -> None:
+        self.calls.append((job_name, kwargs))
+
+
+def create_app(
+    *,
+    settings: ExecutorSettings,
+    routing_config: RoutingConfig,
+    state_store: RedisStateStore,
+    queue,
+) -> FastAPI:
+    app = FastAPI(title="Webhook Cursor Executor", version="0.1.0")
+
+    @app.post(settings.feishu_webhook_path)
+    async def feishu_webhook(request: Request) -> JSONResponse:
+        raw = await request.body()
+        try:
+            payload = parse_request_body(settings.feishu_encrypt_key, raw)
+        except (
+            ValueError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ):
+            return JSONResponse({"error": "bad body"}, status_code=400)
+
+        if payload.get("type") == "url_verification" and "challenge" in payload:
+            if not verification_token_ok(payload, settings):
+                return JSONResponse(
+                    {"error": "invalid verification token"},
+                    status_code=403,
+                )
+            return JSONResponse({"challenge": str(payload["challenge"])})
+
+        timestamp = request.headers.get("X-Lark-Request-Timestamp", "")
+        nonce = request.headers.get("X-Lark-Request-Nonce", "")
+        signature = request.headers.get("X-Lark-Signature", "")
+        if not verify_signature(
+            timestamp,
+            nonce,
+            settings.feishu_encrypt_key,
+            raw,
+            signature,
+        ):
+            return JSONResponse({"error": "invalid signature"}, status_code=401)
+
+        header = payload.get("header") or {}
+        event = payload.get("event") or {}
+        event_id = str(header.get("event_id") or "").strip()
+        event_type = str(header.get("event_type") or "").strip()
+        document_id = str(event.get("document_id") or event.get("file_token") or "").strip()
+        folder_token = str(event.get("folder_token") or "").strip()
+
+        if not event_id or not document_id:
+            return JSONResponse(
+                {"error": "missing event_id or document_id"},
+                status_code=400,
+            )
+        if not state_store.try_mark_event_seen(event_id):
+            return JSONResponse({"code": 0, "msg": "duplicate"})
+
+        route = resolve_folder_route(routing_config, folder_token)
+        if route is None:
+            return JSONResponse({"error": "folder_route_not_resolved"}, status_code=400)
+
+        version = state_store.next_version(document_id)
+        snapshot = DocumentSnapshot(
+            event_id=event_id,
+            document_id=document_id,
+            folder_token=folder_token,
+            event_type=event_type,
+            qa_rule_file=route.qa_rule_file,
+            dataset_id=route.dataset_id,
+            workspace_path=routing_config.pipeline_workspace.path,
+            cursor_timeout_seconds=routing_config.pipeline_workspace.cursor_timeout_seconds,
+            received_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            version=version,
+        )
+        state_store.save_snapshot(snapshot)
+        queue.enqueue("schedule_document_job", document_id=document_id, version=version)
+        return JSONResponse({"code": 0, "msg": "ok"})
+
+    return app
+
+
+def build_app() -> FastAPI:
+    settings = get_executor_settings()
+    routing_config = load_routing_config(settings)
+    redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
+    state_store = RedisStateStore(redis_client=redis_client)
+    queue = RQQueueAdapter(
+        queue=Queue(settings.vla_queue_name, connection=redis_client)
+    )
+    return create_app(
+        settings=settings,
+        routing_config=routing_config,
+        state_store=state_store,
+        queue=queue,
+    )
