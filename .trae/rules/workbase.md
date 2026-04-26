@@ -1,0 +1,28 @@
+字段定义
+
+- schema_version
+  - 固定版本号，便于以后升级合同
+- run_id
+  - 一次 Cursor 执行实例的唯一 ID
+- event_id
+  - 飞书事件唯一标识，用于协议层幂等
+- document_id
+  - 文档主键，新系统调度主键
+- folder_token
+  - 路由和业务上下文辅助字段，可为空
+- event_type
+  - 飞书事件类型原文
+- snapshot_version
+  - 当前文档快照版本号，用于判旧任务
+- workspace_key
+  - 命中的工作区逻辑名
+- workspace_path
+  - 实际执行目录
+- trigger_source
+  - 固定为 feishu_webhook
+- received_at
+  - webhook 收到事件的时间
+- cursor_timeout_seconds
+  - 本次运行超时阈值
+- routing_rule_name
+  - 命中的路由规则名，便于排障；可为空

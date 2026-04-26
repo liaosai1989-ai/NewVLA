@@ -1,0 +1,1 @@
+有plan落地时，需要renew `AGENTS.md` 和 `rules/` 目录下的文件。

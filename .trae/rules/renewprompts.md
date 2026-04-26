@@ -1,0 +1,1 @@
+plan落地时，renew prompts/ 目录下的文件。
