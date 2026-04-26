@@ -49,6 +49,8 @@
 | NTH-002 | webhook 补齐 Dify 目标配置合同 | P1 | 已出 spec | 2026-04-26 | `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | - | 当前 webhook 设计仅稳定覆盖 `dataset_id`，现已明确 `api_base`、`api_key` 走模块根 `.env`，`dataset_id` 必须运行时显式传入 |
 | NTH-003 | RQ 并发多个 Cursor CLI 的设计与实现优化 | P1 | 待评估 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-webhook-cursor-executor-design.md` | - | 当前 spec 已覆盖基础并发语义，后续需单独优化稳定性与实现细节 |
 | NTH-004 | 根目录 .env 与各模块配置消费合同收口 | P1 | 已出 spec | 2026-04-26 | `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | - | 已明确各模块直接消费根 `.env` 各自分组，LLM 不注入基础设施配置，legacy Feishu 维持兼容保留 |
+| NTH-005 | 飞书文件夹-Dify 知识库-QA 合同一对一映射收口 | P1 | 已出 spec | 2026-04-26 | `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | - | 已明确 `folder_token` 必须一对一命中 `dify_target_key`、`dataset_id` 与 `qa_rule_file`，Agent 不负责推断 |
+| NTH-006 | 飞书 App 文件夹创建与权限初始化工具 | P1 | 待评估 | 2026-04-26 | - | - | 需要辅助工具基于飞书 OpenAPI 和 App ID 自动创建 App 文件夹、设为企业内可见，并把 folder token 回写 `.env` |
 
 ## 正文记录
 
@@ -180,7 +182,7 @@
 ## NTH-004 根目录 .env 与各模块配置消费合同收口
 
 - 提出时间：2026-04-26
-- 当前状态：待评估
+- 当前状态：已出 spec
 - 优先级：P1
 - 背景/问题：
   - 当前仓库根目录 `.env` 已完成按模块分组整理，覆盖了 `webhook`、`dify_upload`、`feishu_fetch` 以及用户要求保留的 legacy Feishu 集成配置。
@@ -220,3 +222,87 @@
 - 能明确说清每一组配置由哪个模块直接读取。
 - `webhook`、`dify_upload`、`feishu_fetch` 的配置来源不再互相打架。
 - legacy Feishu 配置的定位清晰，不再长期处于“先留着但没人负责”的状态。
+
+## NTH-005 飞书文件夹-Dify 知识库-QA 合同一对一映射收口
+
+- 提出时间：2026-04-26
+- 当前状态：待评估
+- 优先级：P1
+- 背景/问题：
+  - 当前系统已经有 `folder_token` 路由语义，也有 `dataset_id` 和 QA 规则文件注入语义。
+  - 但“飞书文件夹、Dify 知识库、QA 合同”三者的一对一绑定关系还没有单独收口成稳定合同。
+  - 如果后续只是零散地加配置，容易退化成运行时猜测、隐式回退或映射漂移。
+- 目标：
+  - 明确不同飞书文件夹必须触发不同业务合同。
+  - 明确每个飞书文件夹稳定绑定一套 Dify 知识库和一份 QA 合同。
+  - 明确映射结果由上游显式注入，Agent 不负责自行推断目标合同。
+- 预期收益：
+  - 让业务分流规则和上传目标保持稳定，不因实现细节临时漂移。
+  - 降低新增文件夹或新增业务线时的配置歧义。
+  - 让 `webhook`、运行时上下文、工作区规则资产三者边界更清晰。
+- 影响范围：
+  - `webhook/` 路由配置与任务注入
+  - `task_context.json` 合同
+  - `rules/` 或对应 QA 合同模板资产
+  - Dify 数据集目标配置
+- spec 索引：
+  - `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md`
+- plan 索引：
+  - -
+- 备注：
+  - 已与 `NTH-002`、`NTH-004` 一并收口。
+  - 核心约束是一对一绑定和显式注入，不接受运行时猜测。
+
+### 方案结论
+
+- 由 `webhook` 路由配置维护一对一映射，命中后显式注入 `folder_token`、`dify_target_key`、`dataset_id`、`qa_rule_file`。
+- Agent 不负责推断 Dify 实例、目标知识库或 QA 合同。
+- 根 `.env` 只负责 `dify_target_key -> Dify 静态实例配置`，不承担业务映射。
+
+### 验收标准
+
+- 能明确说清每个飞书文件夹对应哪一套 Dify 实例、哪一个知识库和哪一份 QA 合同。
+- 不同飞书文件夹触发的业务合同不再依赖 Agent 推断。
+- 新增或调整映射时，只需要改一处主配置，不会出现多处定义互相打架。
+
+## NTH-006 飞书 App 文件夹创建与权限初始化工具
+
+- 提出时间：2026-04-26
+- 当前状态：待评估
+- 优先级：P1
+- 背景/问题：
+  - 按飞书规则，本仓库业务链路使用的目标文件夹必须是 App 文件夹，不能直接使用用户个人文件夹。
+  - 当前仓库缺少一套辅助工具，去自动创建符合要求的飞书文件夹并完成基础权限初始化。
+  - 现有配置链路里，往往要先拿到飞书文件夹 token，才能继续把映射关系写回根 `.env`。
+- 目标：
+  - 提供一个基于飞书 OpenAPI 和飞书 App ID 的辅助工具。
+  - 该工具能自动创建对应的 App 文件夹，并把文件夹设置成企业内部可见。
+  - 创建成功后，能拿到目标 `folder_token` 并回写到根 `.env`，供后续映射配置继续使用。
+- 预期收益：
+  - 避免人工先去飞书侧建目录、再手抄 token，减少配置错误。
+  - 保证本仓库使用的文件夹类型符合飞书约束，不会混入用户个人文件夹。
+  - 让“创建文件夹 -> 拿 token -> 写配置”形成可重复执行的标准化链路。
+- 影响范围：
+  - 飞书 OpenAPI 调用封装
+  - 文件夹初始化辅助工具
+  - 仓库根 `.env` 回写逻辑
+  - 与 `folder_token` 相关的映射配置流程
+- spec 索引：
+  - -
+- plan 索引：
+  - -
+- 备注：
+  - 本条是初始化辅助工具，不改变现有 `webhook` 与 Agent 的主链路边界。
+  - 重点是把“App 文件夹约束”和“token 回写配置”收口成可执行工具，而不是靠人工步骤维持。
+
+### 方案草案
+
+- 方案一：提供一个单独 CLI，输入 App ID 和目标文件夹信息，完成创建、设权限、输出并回写 `folder_token`。
+- 方案二：把该能力做成仓库内初始化脚本，和现有 `.env` 管理流程一起使用，但不耦合到运行时 webhook。
+- 方案三：先做最小闭环，只支持创建单个 App 文件夹和回写指定配置项，后续再扩展批量初始化能力。
+
+### 验收标准
+
+- 能通过飞书 OpenAPI 基于 App 身份创建出可用于本仓库的 App 文件夹。
+- 创建后能自动把文件夹设置为企业内部可见，避免继续依赖人工补权限。
+- 工具能拿到正确的 `folder_token` 并稳定回写到根 `.env` 指定配置项。

@@ -2,10 +2,11 @@
 
 ## 1. 背景与目标
 
-本设计用于同时收口两个待优化点：
+本设计用于同时收口三个待优化点：
 
 - `NTH-002 webhook 补齐 Dify 目标配置合同`
 - `NTH-004 根目录 .env 与各模块配置消费合同收口`
+- `NTH-005 飞书文件夹-Dify 知识库-QA 合同一对一映射收口`
 
 当前仓库根目录 `.env` 已按模块分组整理，但实际消费合同还不统一：
 
@@ -19,7 +20,7 @@
 - 根 `.env` 是各模块共享的静态配置源
 - 各模块直接读取自己负责的那组根 `.env` 配置
 - LLM / `task_context.json` 只承载业务运行时参数，不承载基础设施静态配置
-- Dify 的 `dataset_id` 必须运行时显式传入，根 `.env` 不允许提供默认值
+- Dify 的 `dify_target_key` 与 `dataset_id` 必须运行时显式传入，根 `.env` 不允许提供默认值
 
 ## 2. 已定原则
 
@@ -59,19 +60,21 @@ LLM / 运行时合同只承载业务参数，例如：
 - `output_dir`
 - `qa_rule_file`
 
-### 2.3 `dataset_id` 必须运行时显式传入
+### 2.3 `dify_target_key` 与 `dataset_id` 必须运行时显式传入
 
-`dataset_id` 不属于静态基础设施配置，而属于本次任务的业务目标。
+`dify_target_key` 与 `dataset_id` 都不属于静态基础设施配置，而属于本次任务的业务目标引用。
 
 因此：
 
+- `dify_target_key` 必须由运行时显式传入
 - `dataset_id` 必须由运行时显式传入
 - 根 `.env` 禁止提供默认 `DIFY_DATASET_ID`
 - 不允许靠模块内部兜底默认值决定上传目标
+- 不允许只给 `dataset_id` 而不说明它属于哪一套 Dify 实例
 
 这是为了避免：
 
-- 不同 `folder_token` 或不同任务误传到同一个默认数据集
+- 不同 `folder_token` 或不同任务误传到同一个默认数据集或默认实例
 - 看似“能跑”，实际目标漂移
 - 调试阶段默认值进入正式链路
 
@@ -99,9 +102,10 @@ LLM / 运行时合同只承载业务参数，例如：
 
 `webhook` 的新增硬约束：
 
-- 必须把 `dataset_id` 作为运行时显式字段写入 `task_context.json`
+- 必须把 `dify_target_key` 与 `dataset_id` 作为运行时显式字段写入 `task_context.json`
 - 不向任务上下文注入 `api_base`、`api_key`
 - 不靠根 `.env` 的默认 `DIFY_DATASET_ID` 推断目标
+- 不允许只注入 `dataset_id` 而不注入 `dify_target_key`
 
 ### 4.2 `dify_upload`
 
@@ -162,6 +166,7 @@ legacy Feishu 配置继续保留在根 `.env`，但定位改为：
 
 运行时必须显式提供：
 
+- `dify_target_key`
 - `dataset_id`
 
 运行时不提供：
@@ -173,12 +178,34 @@ legacy Feishu 配置继续保留在根 `.env`，但定位改为：
 
 ### 5.2 根 `.env` 合同
 
-根 `.env` 中允许存在：
+根 `.env` 中允许存在一组或多组按 `dify_target_key` 命名的 Dify 静态目标配置。
 
-- `DIFY_API_BASE`
-- `DIFY_API_KEY`
-- `DIFY_HTTP_VERIFY`
-- `DIFY_TIMEOUT_SECONDS`
+每个目标至少要能解析出：
+
+- `api_base`
+- `api_key`
+- `http_verify`
+- `timeout_seconds`
+
+也就是说，根 `.env` 必须承担：
+
+```text
+dify_target_key
+  -> api_base
+  -> api_key
+  -> http_verify
+  -> timeout_seconds
+```
+
+但不承担：
+
+```text
+folder_token
+  -> dataset_id
+  -> qa_rule_file
+```
+
+这层业务映射应留在 `webhook` 路由配置，不放进根 `.env`。
 
 根 `.env` 中不允许存在作为默认目标的：
 
@@ -189,11 +216,14 @@ legacy Feishu 配置继续保留在根 `.env`，但定位改为：
 建议错误口径：
 
 - `dify config error: DIFY_DATASET_ID is not allowed in root .env; dataset_id must come from runtime context`
+- `dify config error: dify_target_key is missing; runtime must provide the target key explicitly`
+- `dify config error: unknown dify_target_key=team_a; no matching Dify target config found in root .env`
 
 ### 5.3 调用侧合同
 
 调用 `dify_upload` 时，最低必要输入应为：
 
+- 运行时显式给出的 `dify_target_key`
 - 运行时显式给出的 `dataset_id`
 - 待上传文件路径
 
@@ -233,7 +263,7 @@ feishu_fetch/
 说明：
 
 - `webhook` 继续保留现有 `settings.py`
-- `dify_upload/config.py` 承担根 `.env` 的 Dify 静态配置读取
+- `dify_upload/config.py` 承担根 `.env` 中按 `dify_target_key` 命中的 Dify 静态配置读取
 - `feishu_fetch/config.py` 作为新增薄文件，承担根 `.env` 的飞书抓取静态配置读取
 - 不新增单独 resolver 包
 
@@ -250,22 +280,24 @@ feishu_fetch/
 
 - `DifyEnvSettings`
   - 只包含 `api_base`、`api_key`、`http_verify`、`timeout_seconds`
-  - 从根 `.env` 读取
+  - 从根 `.env` 读取并按 `dify_target_key` 命中
   - 明确拒绝 `DIFY_DATASET_ID`
 - `DifyTargetConfig`
   - 仍代表“可直接发请求的最终目标”
+  - 必须包含运行时传入的 `dify_target_key`
   - 必须包含运行时传入的 `dataset_id`
 
 建议提供一个最小辅助入口：
 
 ```python
-def build_target_config(*, dataset_id: str) -> DifyTargetConfig:
+def build_target_config(*, dify_target_key: str, dataset_id: str) -> DifyTargetConfig:
     ...
 ```
 
 语义：
 
-- 由 `dify_upload` 自己从根 `.env` 读取静态配置
+- 由 `dify_upload` 自己按 `dify_target_key` 从根 `.env` 读取静态配置
+- 由调用方显式传入 `dify_target_key`
 - 由调用方显式传入 `dataset_id`
 - 返回最终 `DifyTargetConfig`
 
@@ -295,20 +327,41 @@ def build_target_config(*, dataset_id: str) -> DifyTargetConfig:
 
 ### 7.3 `webhook`
 
-`webhook` 设计保持不变，但补两条硬规则：
+`webhook` 设计保持不变，但补三条硬规则：
 
+- `task_context.json` 中的 `dify_target_key` 是必填字段
 - `task_context.json` 中的 `dataset_id` 是必填字段
-- 若上游路由阶段拿不到 `dataset_id`，应在进入上传环节前失败，而不是让下游模块兜底猜测
+- 若上游路由阶段拿不到 `dify_target_key` 或 `dataset_id`，应在进入上传环节前失败，而不是让下游模块兜底猜测
+
+### 7.4 `folder_token` 一对一映射合同
+
+`webhook` 路由配置必须承担以下业务映射：
+
+```text
+folder_token
+  -> dify_target_key
+  -> dataset_id
+  -> qa_rule_file
+```
+
+含义：
+
+- `folder_token` 决定业务线
+- `dify_target_key` 决定去根 `.env` 中取哪一套 Dify 实例配置
+- `dataset_id` 决定该实例中的目标知识库
+- `qa_rule_file` 决定本次任务读取哪一份 QA 合同
+
+Agent 不负责推断这三者的映射关系。
 
 ## 8. 运行时数据流
 
 ```text
 folder_token / document event
   -> webhook 路由
-  -> 明确得到 dataset_id
+  -> 明确得到 dify_target_key + dataset_id + qa_rule_file
   -> 写入 task_context.json
-  -> Agent / 调用侧显式传入 dataset_id
-  -> dify_upload 从根 .env 读取静态 Dify 配置
+  -> Agent / 调用侧显式传入 dify_target_key + dataset_id
+  -> dify_upload 按 dify_target_key 从根 .env 读取静态 Dify 配置
   -> 完成上传
 ```
 
@@ -327,10 +380,11 @@ task_context / tool input
 
 以下情况必须 fail fast：
 
+- 运行时未传 `dify_target_key`
 - 运行时未传 `dataset_id`
+- `dify_target_key` 为空字符串
 - `dataset_id` 为空字符串
-- 根 `.env` 缺 `DIFY_API_BASE`
-- 根 `.env` 缺 `DIFY_API_KEY`
+- 根 `.env` 中不存在与 `dify_target_key` 匹配的 Dify 目标配置
 - 根 `.env` 包含非空 `DIFY_DATASET_ID`
 
 ### 9.2 `feishu_fetch`
@@ -345,7 +399,10 @@ task_context / tool input
 
 以下情况必须 fail fast：
 
+- 路由后未得到 `dify_target_key`
 - 路由后未得到 `dataset_id`
+- 路由后未得到 `qa_rule_file`
+- 生成 `task_context.json` 时遗漏 `dify_target_key`
 - 生成 `task_context.json` 时遗漏 `dataset_id`
 
 ## 10. 对现有设计的覆盖关系
@@ -355,17 +412,19 @@ task_context / tool input
 - “`dify_upload` 的完整目标配置应总由模块外适配层先组装好再传入”
 - “根 `.env` 中可以保留默认 `DIFY_DATASET_ID`”
 - “只有 `webhook` 直接读根 `.env`，其他模块应主要依赖外部组装”
+- “`dataset_id` 单独注入就足够，不需要标明 Dify 实例”
 
 新的口径是：
 
 - 各模块都可直接读取根 `.env` 的本模块配置分组
-- `dataset_id` 只能来自运行时显式输入
+- `dify_target_key` 与 `dataset_id` 只能来自运行时显式输入
 - LLM 不承担静态基础设施配置注入
 
 ## 11. 成功标准
 
 - `webhook`、`dify_upload`、`feishu_fetch` 都有清晰的根 `.env` 消费边界
-- `DIFY_API_BASE`、`DIFY_API_KEY` 的来源明确，不再靠实现期猜测
+- `dify_target_key` 与 Dify 实例配置的对应关系明确，不再靠实现期猜测
 - `dataset_id` 的来源明确，必须来自运行时显式输入
+- `folder_token -> dify_target_key + dataset_id + qa_rule_file` 的映射关系明确
 - 根 `.env` 不再承担默认业务目标注入职责
 - legacy Feishu 配置继续保留，但不会与主链路合同混用
