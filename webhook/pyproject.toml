@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "webhook-cursor-executor"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "redis>=6.0,<7.0",
+  "rq>=2.2,<3.0",
+  "pydantic>=2.11,<3.0",
+  "pydantic-settings>=2.9,<3.0",
+  "pycryptodome>=3.21,<4.0",
+  "uvicorn>=0.34,<1.0"
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.3,<9.0",
+  "fakeredis>=2.29,<3.0",
+  "httpx>=0.28,<1.0"
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

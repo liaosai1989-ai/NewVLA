@@ -17,7 +17,7 @@
 
 - 接收结构化抓取请求
 - 调用 `lark-cli` 直接拉取飞书 docx 原文并落盘
-- 下载飞书 drive 文件后，按格式决定是原文件直出，还是经 `MarkItDown` 转成正文后落盘
+- 下载飞书 drive 文件后，按第一版固定支持矩阵决定是原文件直出，还是经 `MarkItDown` 转成 Markdown 后落盘
 - 返回统一的产物结果
 - 在失败时抛出对 LLM 友好的异常
 
@@ -75,6 +75,26 @@ Agent 读取产物文件
 
 本模块只接收抓取请求，只输出落盘产物结果或异常。
 
+### 4.1 上游注入闭环
+
+为了避免 Agent 在运行时猜参数，第一版要求上游在 `task_context.json` 中显式注入 `feishu_fetch` 所需字段。
+
+推荐方式：
+
+- 直接注入一个 `feishu_fetch_request`
+- 或至少注入以下等价字段：
+  - `ingest_kind`
+  - `document_id`
+  - `file_token`
+  - `doc_type`
+
+约束：
+
+- `drive_file` 不能只给 `document_id`，必须显式给 `file_token` 和 `doc_type`
+- Agent 不允许根据 `event_type`、URL、仓库文档或历史经验自行猜测 `doc_type`
+- 自动化运行场景下，`output_dir` 应显式指向 `.cursor_task/{run_id}/outputs/feishu_fetch/`
+- 本模块只消费显式传入的抓取参数，不负责从 webhook 事件体重新推导抓取请求
+
 ## 5. 总体方案选择
 
 经设计讨论后，采用 **方案 B2：基于 `lark-cli` 的单入口 facade 封装**。
@@ -105,7 +125,7 @@ Agent 读取产物文件
 因此最终选择：
 
 - 对外只暴露一个高层抓取入口
-- 内部再决定调用 `lark-cli docs +fetch` 还是 `lark-cli drive +download`
+- 内部再决定调用 `lark-cli docs +fetch`、`lark-cli drive +download` 或 `lark-cli drive +export`
 
 ## 6. 功能范围
 
@@ -114,25 +134,69 @@ Agent 读取产物文件
 ### 6.1 `cloud_docx`
 
 - 输入：`document_id`
-- 行为：通过 `lark-cli docs +fetch --api-version v2` 直接拉取飞书 docx 原文
-- 产物：将原文按 UTF-8 文本文件落盘
+- 行为：通过 `lark-cli docs +fetch --api-version v2 --format json --doc-format xml --detail simple` 获取文档导出内容
+- 提取：从返回的 JSON envelope 中读取 `data.document.content`
+- 产物：将导出内容按 UTF-8 文本文件落盘
 - 不依赖 `MarkItDown`
 
 ### 6.2 `drive_file`
 
 - 输入：`file_token` + `doc_type`
 - 行为：
-  - 通过 `lark-cli drive +download` 下载文件到本地输出目录
-  - 下载完成后按文件格式分流：
-    - LLM 可直接读取的格式：原文件直接保留并作为主产物
-    - LLM 一般不能直接读取的格式：使用 `MarkItDown` 转成正文文本后落盘
-- 产物：原文件或转换后的正文文件
+  - 先按飞书对象类型分流命令路径
+  - 再按落盘后的本地文件格式决定是原文件直出，还是交给 `MarkItDown`
+- 产物：原文件或转换后的 Markdown 文件
 
-### 6.3 `drive_file` 的格式分流
+### 6.3 `drive_file` 的命令分流
 
-`drive_file` 仅支持旧实现白名单内已经明确处理过的格式策略，不在第一版中扩展。
+`drive_file` 不能统一建模成“先 `drive +download` 再按扩展名处理”。
 
-#### 6.3.1 直接落原文件
+第一版按 `doc_type` 分流如下：
+
+#### 6.3.1 `file`
+
+- 走 `lark-cli drive +download`
+- 下载后再按本地扩展名判断是否原文件直出
+
+#### 6.3.2 `doc` / `docx` / `sheet`
+
+- 优先走 `lark-cli drive +export`
+- 导出目标格式必须显式固定，不允许依赖 CLI 默认值
+- 若导出轮询窗口内未完成：
+  - 继续走有上限的 `lark-cli drive +task_result --scenario export`
+  - 拿到导出文件 token 后，再走 `lark-cli drive +export-download`
+- 若在总超时预算内仍拿不到导出结果，则直接失败，不做无限轮询
+
+第一版固定导出合同如下：
+
+| `doc_type` | 命令链 | 固定导出格式 | 预期本地扩展名 | 后续处理 |
+| --- | --- | --- | --- | --- |
+| `doc` | `drive +export` -> bounded `task_result` -> `export-download` | `docx` | `.docx` | 交给 `MarkItDown` |
+| `docx` | `drive +export` -> bounded `task_result` -> `export-download` | `docx` | `.docx` | 交给 `MarkItDown` |
+| `sheet` | `drive +export` -> bounded `task_result` -> `export-download` | `xlsx` | `.xlsx` | 交给 `MarkItDown` |
+
+说明：
+
+- 实现时必须显式传入对应的导出格式参数
+- 若 `lark-cli` 实测不支持上述固定导出格式，则对应类型应从第一版支持范围移除，而不是在实现时临时改合同
+
+#### 6.3.3 `slides` / `mindnote`
+
+- 当前只有对象类型层面的间接信息
+- 还没有足够证据证明其第一版命令链应走 `download`、`export` 或专属域命令
+- 因此第一版不纳入支持范围
+
+#### 6.3.4 `bitable`
+
+- `bitable` 虽然在 `drive +export` 语义上有间接信息，但当前没有被第一版正文链路验证为稳定、可消费的固定输出
+- 为避免把不稳定导出格式写进 v1 合同，第一版移出支持范围
+- 后续若补齐独立验证，再以单独 spec 修订加入
+
+### 6.4 `drive_file` 的格式分流
+
+`drive_file` 仅支持旧实现白名单内、且命令链已验证清楚的格式策略，不在第一版中扩展。
+
+#### 6.4.1 直接落原文件
 
 若下载后的文件属于 LLM 可直接读取的格式，则直接保留原文件作为主产物，例如：
 
@@ -143,9 +207,9 @@ Agent 读取产物文件
 - 结构化文本：`.json`、`.jsonl`、`.xml`、`.yaml`、`.yml`
 - HTML / SVG：`.html`、`.htm`、`.xhtml`、`.svg`
 
-#### 6.3.2 转正文后落盘
+#### 6.4.2 转 Markdown 后落盘
 
-若下载后的文件属于 LLM 一般不能直接稳定读取的格式，则使用 `MarkItDown` 转为正文文本后落盘，例如：
+若下载或导出后的文件属于 LLM 一般不能直接稳定读取的格式，则使用 `MarkItDown` 转为 Markdown 文本后落盘，例如：
 
 - `.doc`
 - `.docx`
@@ -155,7 +219,7 @@ Agent 读取产物文件
 - `.xlsx`
 - `.pdf`
 
-#### 6.3.3 不支持的情况
+#### 6.4.3 不支持的情况
 
 若下载后的文件格式不在以上两类中，第一版应明确失败，而不是做模糊兜底。
 
@@ -200,11 +264,12 @@ artifact_path = result.artifact_path
   - 仅 `drive_file` 使用
 - `doc_type`
   - 仅 `drive_file` 使用
-  - 必须在白名单范围内
+  - 第一版白名单仅包含 `file`、`doc`、`docx`、`sheet`
 - `output_dir`
   - 必填
   - 指定本次抓取产物落盘目录
   - 模块不自行猜测工作区输出目录
+  - 自动化运行场景下，推荐显式传入 `.cursor_task/{run_id}/outputs/feishu_fetch/`
 - `title_hint`
   - 可选
   - 辅助生成下载文件名或补充结果标题
@@ -222,54 +287,33 @@ artifact_path = result.artifact_path
   - 必须提供可写的 `output_dir`
 - 不允许传半套字段后由模块自行猜测剩余信息
 - `doc_type` 不在支持范围内时立即失败
+- 不允许把 `document_id` 当作 `drive_file` 的兜底输入
 
 ## 8. 成功返回模型
 
 建议定义 `FeishuFetchResult`，仅表示成功态：
 
 - `artifact_path: str`
-- `artifact_kind: str`
-- `title: str | None`
 - `ingest_kind: str`
-- `source_id: str`
-- `source_type: str`
-- `detail: dict[str, Any]`
+- `title: str | None`
 
 字段语义：
 
 - `artifact_path`
   - 主产物绝对路径
   - 成功时必须存在，且文件已落盘
-- `artifact_kind`
-  - 主产物类型
-  - 建议值：
-    - `docx_raw_text`
-    - `drive_original_file`
-    - `drive_normalized_text`
-- `title`
-  - 可选标题
 - `ingest_kind`
   - 实际走到的抓取路径
-- `source_id`
-  - 对应 `document_id` 或 `file_token`
-- `source_type`
-  - 对应 `docx` / `sheet` / `bitable` / `slides` 等类型
-- `detail`
-  - 放最少必要的排障信息，例如：
-    - `backend = "lark-cli"`
-    - `command_used`
-    - `written_filename`
-    - `downloaded_filename`
-    - `normalize_converter = "markitdown"`
-    - `original_file_path`
-    - `normalized_text_path`
-    - `source_extension`
+- `title`
+  - 可选标题
+  - 仅用于帮助 Agent 理解产物来源，不承担排障语义
 
 注意：
 
 - 失败信息不再塞进返回值
 - 返回值不使用 `ok=false` 这种业务态包装
 - 返回值不要求内联整段正文内容，主结果是落盘产物路径
+- 排障细节不固化进成功返回合同，需要时由日志或调用侧调试信息承接
 
 ## 9. 异常模型
 
@@ -280,7 +324,6 @@ artifact_path = result.artifact_path
 ```python
 class FeishuFetchError(Exception):
     code: str
-    retryable: bool
     llm_message: str
     detail: dict[str, Any]
 ```
@@ -291,17 +334,16 @@ class FeishuFetchError(Exception):
 - `llm_message` 必须对 LLM 友好
 - `detail` 只保留最少必要技术信息，不直接要求 LLM 解析整段原始 stderr
 
-### 9.1 异常子类
+### 9.1 错误码
 
-建议至少包含：
+第一版不再维护过细的异常子类树，只保留一个基础异常类，并用稳定 `code` 区分错误类型。
 
-- `FeishuFetchError`
-- `FeishuFetchDependencyError`
-- `FeishuFetchAuthError`
-- `FeishuFetchRequestError`
-- `FeishuFetchCommandError`
-- `FeishuFetchNormalizeError`
-- `FeishuFetchEmptyContentError`
+建议错误码：
+
+- `request_error`
+- `dependency_error`
+- `runtime_error`
+- `empty_content`
 
 ### 9.2 LLM 友好文案规则
 
@@ -327,21 +369,26 @@ class FeishuFetchError(Exception):
 - `command`
 - `exit_code`
 - `stderr_tail`
-- `source_id`
-- `doc_type`
 - `ingest_kind`
+- `doc_type`
 
-### 9.4 `retryable` 规则
+### 9.4 错误归类原则
 
-建议默认策略：
+第一版只做保守归类：
 
-- 参数错误：`False`
-- 依赖缺失：`False`
-- 权限/认证不足：`False`
-- `lark-cli` 命令超时：`True`
-- 临时下载失败：`True`
-- 不支持类型：`False`
-- 正文转换失败：默认 `False`
+- 参数缺失、字段冲突、`doc_type` 不支持
+  - `request_error`
+- `lark-cli` 或 `MarkItDown` 不可用
+  - `dependency_error`
+- `lark-cli` 执行失败、导出超时、认证失败、下载失败、转换失败
+  - `runtime_error`
+- 成功拿到结果但正文为空
+  - `empty_content`
+
+说明：
+
+- 是否重试不是本模块合同的一部分
+- 调度层若需要重试，应基于 `code` 和运行上下文自行决策
 
 ## 10. 第三方依赖策略
 
@@ -351,7 +398,8 @@ class FeishuFetchError(Exception):
 
 约束：
 
-- 若环境中不存在 `lark-cli`，直接抛 `FeishuFetchDependencyError`
+- 若环境中不存在 `lark-cli`，直接抛 `dependency_error`
+- 依赖检测不只看命令名是否存在，还要确认命令可以被实际启动
 - 模块只负责检测与调用，不负责安装
 - 模块不负责自动登录或修复认证状态
 
@@ -363,8 +411,9 @@ class FeishuFetchError(Exception):
 
 - `cloud_docx` 路径不依赖 `MarkItDown`
 - `drive_file` 只有在命中“需转换格式”时才依赖 `MarkItDown`
-- 若当前下载文件命中转换路径且无法导入 `MarkItDown`，抛 `FeishuFetchDependencyError`
+- 若当前下载文件命中转换路径且无法导入 `MarkItDown`，抛 `dependency_error`
 - 不自动安装、不自动降级到其他转换器
+- `MarkItDown` 的目标产物是 Markdown，不应在合同中泛化成 plain text
 
 ### 10.3 按路径检测
 
@@ -390,38 +439,23 @@ feishu_fetch/
   facade.py
   models.py
   errors.py
-  dependency_probe.py
-  cli_runner.py
-  docx_fetcher.py
-  drive_fetcher.py
-  artifact_store.py
-  normalizer.py
 ```
 
 职责划分：
 
 - `facade.py`
   - 对外唯一公共入口
-  - 负责参数校验、按 `ingest_kind` 路由、收口成功结果
+  - 负责参数校验、按 `ingest_kind` 路由、依赖检测、命令调用、落盘和收口成功结果
+  - 第一版将 `cloud_docx` / `drive_file` 的流程以内聚私有函数实现，不为未来扩展提前拆文件
 - `models.py`
   - 定义输入模型与成功结果模型
 - `errors.py`
   - 定义 LLM 友好异常体系
-- `dependency_probe.py`
-  - 检测 `lark-cli` 与 `MarkItDown`
-- `cli_runner.py`
-  - 统一执行 `lark-cli` 子进程
-  - 负责超时、stdout/stderr 收集、退出码判断
-- `docx_fetcher.py`
-  - 调用 `lark-cli docs +fetch --api-version v2`
-  - 解析正文
-- `drive_fetcher.py`
-  - 调用 `lark-cli drive +download`
-  - 下载到输出目录并返回本地路径
-- `artifact_store.py`
-  - 负责产物目录、产物文件命名与落盘
-- `normalizer.py`
-  - 在命中转换路径时使用 `MarkItDown` 将文件转成正文文本
+
+说明：
+
+- 只有当第二后端、第二转换器或明显复用出现后，才考虑再拆子进程执行器、正文转换器等独立模块
+- 第一版优先保证文件少、流程清楚、调用边界稳定
 
 ## 12. 数据流设计
 
@@ -430,8 +464,7 @@ feishu_fetch/
 ```text
 fetch_feishu_content(request)
   -> 校验 request
-  -> 按 ingest_kind 决定所需依赖
-  -> 进行软依赖检测
+  -> 先检测 lark-cli 是否可实际启动
   -> 分流到具体抓取器
   -> 写入主产物文件
   -> 返回 FeishuFetchResult
@@ -443,11 +476,11 @@ fetch_feishu_content(request)
 ```text
 request(ingest_kind=cloud_docx, document_id)
   -> facade 校验 document_id
-  -> 检测 lark-cli
-  -> docx_fetcher 调用 docs +fetch --api-version v2
-  -> 获取原文文本
-  -> artifact_store 落盘为文本文件
-  -> 若原文为空则抛 FeishuFetchEmptyContentError
+  -> 检测 lark-cli 可实际启动
+  -> facade 私有函数调用 docs +fetch --api-version v2 --format json --doc-format xml --detail simple
+  -> 从 JSON envelope 提取 data.document.content
+  -> facade 私有函数落盘为文本文件
+  -> 若 content 为空则抛 `empty_content`
   -> 组装 FeishuFetchResult
 ```
 
@@ -456,20 +489,30 @@ request(ingest_kind=cloud_docx, document_id)
 ```text
 request(ingest_kind=drive_file, file_token, doc_type)
   -> facade 校验参数与 doc_type 白名单
-  -> 检测 lark-cli
+  -> 检测 lark-cli 可实际启动
   -> 准备 output_dir
-  -> drive_fetcher 调用 drive +download
+  -> 若 doc_type == file:
+       facade 私有函数调用 drive +download
+  -> 若 doc_type in {doc, docx, sheet}:
+       按固定导出矩阵显式传参调用 drive +export
+       若导出未完成:
+         在总超时预算内有上限地轮询 drive +task_result --scenario export
+         成功后调用 drive +export-download
+       若超过总超时预算:
+         抛 runtime_error
+  -> 若 doc_type in {bitable, slides, mindnote}:
+       抛 request_error
   -> 获得本地文件路径
   -> 判断文件格式
   -> 若属于 LLM 可直接读取格式:
        直接保留原文件并返回
   -> 若属于需转换格式:
-       检测 MarkItDown
-       normalizer 使用 MarkItDown 转正文
-       artifact_store 落盘正文文件
-       若正文为空则抛 FeishuFetchEmptyContentError
+       再检测 MarkItDown
+       facade 私有函数使用 MarkItDown 转 Markdown
+       facade 私有函数落盘 Markdown 文件
+       若 Markdown 为空则抛 empty_content
   -> 若格式不支持:
-       抛 FeishuFetchRequestError
+       抛 request_error
   -> 组装 FeishuFetchResult
 ```
 
@@ -482,30 +525,48 @@ request(ingest_kind=drive_file, file_token, doc_type)
 理由：
 
 - 该命令是官方推荐的 docs v2 读取入口
-- 可直接获取 docx 原文文本
+- 默认返回 JSON envelope，可从 `data.document.content` 取出文档导出内容
 - 比直接在模块中重新实现 OpenAPI 协议更符合当前方案 B
 
-模块内部应固定必要参数，避免把 `lark-cli` 的复杂旗标暴露给上游。抓取后的原文必须落盘，而不是只以内联字符串返回。
+模块内部应固定必要参数，避免把 `lark-cli` 的复杂旗标暴露给上游。第一版建议固定：
 
-### 13.2 drive 下载
+- `--format json`
+- `--doc-format xml`
+- `--detail simple`
+- `--scope` 也应显式固定，不能依赖 CLI 默认值
 
-第一版采用 `lark-cli drive +download`。
+抓取后的内容必须落盘，而不是只以内联字符串返回。
+
+### 13.2 drive 导出与下载
+
+第一版不再统一采用 `lark-cli drive +download`。
 
 理由：
 
-- 已覆盖飞书 drive 文件下载
-- 可让模块把重点放在“下载后如何分类处理并落盘”，而不是重复封装飞书文件下载协议
+- `file` 类型适合 `drive +download`
+- 第一版只保留能写死导出结果的 `doc` / `docx` / `sheet`
+- `doc` / `docx` 固定导出为 `.docx`
+- `sheet` 固定导出为 `.xlsx`
+- `bitable`、`slides`、`mindnote` 因固定输出未验证，不纳入第一版
+- `drive +export` 超时后只做有上限的补充轮询，不做无限等待
+
+第一版导出链的实现约束：
+
+- 显式传入导出格式参数
+- 维护一个总超时预算
+- `task_result` 轮询必须有固定间隔和最大次数
+- 超出预算后直接抛 `runtime_error`
 
 ### 13.3 命令执行边界
 
-`cli_runner` 只负责：
+内部子进程执行辅助逻辑只负责：
 
 - 组装子进程调用
 - 设置超时
 - 收集 stdout / stderr
 - 返回执行结果
 
-`cli_runner` 不负责：
+内部子进程执行辅助逻辑不负责：
 
 - 业务路由
 - 解析 docx 正文语义
@@ -520,10 +581,10 @@ request(ingest_kind=drive_file, file_token, doc_type)
 
 - 所有主产物必须落在调用方显式提供的 `output_dir` 内
 - 不能散落到仓库根目录
-- 若当前调用发生在任务运行上下文中，调用方应把 `output_dir` 指向本次任务目录下的专用子目录
+- 若当前调用发生在任务运行上下文中，调用方应把 `output_dir` 指向 `.cursor_task/{run_id}/outputs/feishu_fetch/`
 - 对 `cloud_docx`，落盘的是原文文本文件
 - 对可直读的 `drive_file`，落盘的是原始文件
-- 对需转换的 `drive_file`，落盘的是转换后的正文文本文件
+- 对需转换的 `drive_file`，落盘的是转换后的 Markdown 文件
 - 若实现为了转换而产生中间文件，应与主产物分离管理
 
 第一版不要求保留所有中间文件，但必须保证主产物路径稳定、可读、可被后续 Agent 步骤直接消费。
@@ -539,16 +600,16 @@ request(ingest_kind=drive_file, file_token, doc_type)
   - 字段冲突
   - `doc_type` 不支持
 - `dependency`
-  - 找不到 `lark-cli`
+  - `lark-cli` 不存在或不可实际启动
   - 找不到 `MarkItDown`
 - `command`
   - 命令退出码非 0
   - 超时
   - stdout / stderr 不符合预期
 - `normalize`
-  - 文件已下载，但正文转换失败
+  - 文件已下载或导出，但 Markdown 转换失败
 - `content`
-  - 命令成功，但原文或转换后的正文为空
+  - 命令成功，但导出内容或转换后的 Markdown 为空
 
 ### 15.2 错误归因
 
@@ -557,16 +618,16 @@ request(ingest_kind=drive_file, file_token, doc_type)
 例如：
 
 - 提到 `login` / `auth` / `permission denied`
-  - 归为认证或权限问题
-- 提到命令不存在
-  - 归为依赖缺失
+  - 归入 `runtime_error`
+- 提到命令不存在或命令无法启动
+  - 归入 `dependency_error`
 - 提到超时
-  - 归为命令超时
+  - 归入 `runtime_error`
 
 要求：
 
 - 做有限、保守的归因
-- 没把握时归到通用 `FeishuFetchCommandError`
+- 没把握时归到通用 `runtime_error`
 - 不做过度聪明的推断
 
 ## 16. 测试策略
@@ -580,6 +641,7 @@ request(ingest_kind=drive_file, file_token, doc_type)
 - `cloud_docx` 缺 `document_id` 时抛对的异常
 - `drive_file` 缺 `file_token` / `doc_type` 时抛对的异常
 - `doc_type` 不在白名单时抛对的异常
+- `drive_file` 只给 `document_id` 时抛对的异常
 
 ### 16.2 依赖探测
 
@@ -589,6 +651,7 @@ request(ingest_kind=drive_file, file_token, doc_type)
 - `MarkItDown` 不可导入时，只有命中需转换格式的 `drive_file` 路径抛对的异常
 - `cloud_docx` 路径不会误要求 `MarkItDown`
 - 可直读的 `drive_file` 路径不会误要求 `MarkItDown`
+- `lark-cli` 名称存在但无法实际启动时抛对的异常
 
 ### 16.3 CLI 交互
 
@@ -599,15 +662,16 @@ request(ingest_kind=drive_file, file_token, doc_type)
 - mock 超时
 - mock stdout 为空或格式异常
 - 验证异常是否被翻译为 LLM 友好文案
+- 验证 `doc/docx/sheet` 是否显式带上固定导出格式参数
 
 ### 16.4 正文转换
 
 覆盖：
 
 - 可直读格式会保留原文件并返回对应产物路径
-- 需转换格式能转出正文并落盘
+- 需转换格式能转出 Markdown 并落盘
 - 不支持格式直接失败
-- 转换异常被包装为 `FeishuFetchNormalizeError`
+- 转换异常被包装为 `runtime_error`
 
 ### 16.5 集成测试边界
 
@@ -625,9 +689,9 @@ request(ingest_kind=drive_file, file_token, doc_type)
 
 后续可单独维护如下手动验证项：
 
-- `cloud_docx` 成功抓取原文并落盘
+- `cloud_docx` 成功从 `data.document.content` 提取导出内容并落盘
 - 可直读的 `drive_file` 成功下载原文件并落盘
-- 需转换的 `drive_file` 成功转正文并落盘
+- 需转换的 `drive_file` 在 `doc/docx/sheet` 固定导出矩阵下成功转 Markdown 并落盘
 - 缺 `lark-cli` 时异常文案正确
 - 缺 `MarkItDown` 时仅需转换的 `drive_file` 路径失败
 - 认证不足时异常归因正确
@@ -654,11 +718,15 @@ request(ingest_kind=drive_file, file_token, doc_type)
 - 使用 `lark-cli` 作为主抓取后端
 - 使用单入口 facade 供 Agent 调用
 - 输入采用结构化参数，不以 URL 为主
-- `cloud_docx` 走 docs +fetch，直接拉原文并落盘
-- `drive_file` 先走 drive +download，再按格式决定原文件直出还是 `MarkItDown` 转正文后落盘
+- 上游必须显式注入 `feishu_fetch_request` 或等价字段，不允许 Agent 猜 `drive_file` 参数
+- `cloud_docx` 走 docs +fetch，从 `data.document.content` 提取导出内容并落盘
+- `drive_file` 按 `doc_type` 分命令链：`file` 走 download；`doc/docx` 固定导出为 `.docx`；`sheet` 固定导出为 `.xlsx`
+- `bitable`、`slides`、`mindnote` 不纳入第一版
 - `lark-cli` 全局软依赖，`MarkItDown` 仅对需转换格式按路径做软依赖检测
-- 成功返回结构化产物结果
-- 失败直接抛出 LLM 友好异常
+- `MarkItDown` 的产物语义是 Markdown，而不是泛化的 plain text
+- 成功返回最小结果：`artifact_path`、`ingest_kind`、可选 `title`
+- 失败直接抛出带稳定 `code` 的 LLM 友好异常
+- 第一版内部模块先合并为少量文件，不为未来扩展提前拆碎
 - 自动化测试只覆盖高价值边界
 
 该设计足以支撑后续实现计划，不需要再为第一版引入双后端、自动安装、自动认证修复或超出当前业务边界的扩展能力。

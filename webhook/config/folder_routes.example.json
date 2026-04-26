@@ -1,0 +1,13 @@
+{
+  "pipeline_workspace": {
+    "path": "C:\\workspaces\\pipeline",
+    "cursor_timeout_seconds": 7200
+  },
+  "folder_routes": [
+    {
+      "folder_token": "fld_team_a",
+      "qa_rule_file": "rules/team_a_qa.md",
+      "dataset_id": "dataset_team_a"
+    }
+  ]
+}
