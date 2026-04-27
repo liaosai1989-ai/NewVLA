@@ -65,6 +65,138 @@ def test_webhook_uses_redis_event_seen_and_enqueues_schedule():
     assert queue.calls[0][0] == "schedule_document_job"
 
 
+def test_drive_edit_without_folder_token_enqueues_ingest_not_listing_in_http():
+    settings = ExecutorSettings(
+        feishu_encrypt_key="",
+        feishu_verification_token="",
+        feishu_app_id="cli_x",
+        feishu_app_secret="sec",
+    )
+    routing = RoutingConfig(
+        pipeline_workspace=PipelineWorkspace(
+            path="C:\\workspaces\\pipeline",
+            cursor_timeout_seconds=7200,
+        ),
+        folder_routes=[
+            FolderRoute(
+                folder_token="fld_team_a",
+                qa_rule_file="rules/team_a_qa.md",
+                dataset_id="dataset_team_a",
+            )
+        ],
+    )
+    queue = FakeQueue()
+    store = RedisStateStore(redis_client=FakeStrictRedis(decode_responses=True))
+    app = create_app(
+        settings=settings,
+        routing_config=routing,
+        state_store=store,
+        queue=queue,
+    )
+    client = TestClient(app)
+
+    payload = {
+        "header": {"event_id": "evt_edit", "event_type": "drive.file.edit_v1"},
+        "event": {"file_token": "docx_token_1", "file_type": "docx"},
+    }
+    r = client.post("/webhook/feishu", json=payload)
+    assert r.status_code == 200
+    assert r.json().get("msg") == "ok"
+    assert queue.calls[0][0] == "ingest_feishu_document_event"
+    assert queue.calls[0][1]["document_id"] == "docx_token_1"
+    assert not list(store.redis.scan_iter("webhook:event_seen:*"))
+
+
+def test_drive_edit_without_folder_token_and_without_app_creds_returns_400():
+    settings = ExecutorSettings(
+        feishu_encrypt_key="",
+        feishu_verification_token="",
+        feishu_app_id="",
+        feishu_app_secret="",
+    )
+    routing = RoutingConfig(
+        pipeline_workspace=PipelineWorkspace(
+            path="C:\\workspaces\\pipeline",
+            cursor_timeout_seconds=7200,
+        ),
+        folder_routes=[
+            FolderRoute(
+                folder_token="fld_team_a",
+                qa_rule_file="rules/team_a_qa.md",
+                dataset_id="dataset_team_a",
+            )
+        ],
+    )
+    queue = FakeQueue()
+    store = RedisStateStore(redis_client=FakeStrictRedis(decode_responses=True))
+    app = create_app(
+        settings=settings,
+        routing_config=routing,
+        state_store=store,
+        queue=queue,
+    )
+    client = TestClient(app)
+    r = client.post(
+        "/webhook/feishu",
+        json={
+            "header": {"event_id": "e1", "event_type": "drive.file.edit_v1"},
+            "event": {"file_token": "ft1"},
+        },
+    )
+    assert r.status_code == 400
+    assert "folder_token" in (r.json().get("error") or "")
+    assert queue.calls == []
+
+
+def test_folder_route_fail_does_not_mark_event_seen():
+    settings = ExecutorSettings(
+        feishu_encrypt_key="",
+        feishu_verification_token="",
+    )
+    routing = RoutingConfig(
+        pipeline_workspace=PipelineWorkspace(
+            path="C:\\workspaces\\pipeline",
+            cursor_timeout_seconds=7200,
+        ),
+        folder_routes=[
+            FolderRoute(
+                folder_token="fld_team_a",
+                qa_rule_file="rules/team_a_qa.md",
+                dataset_id="dataset_team_a",
+            )
+        ],
+    )
+    queue = FakeQueue()
+    store = RedisStateStore(redis_client=FakeStrictRedis(decode_responses=True))
+    app = create_app(
+        settings=settings,
+        routing_config=routing,
+        state_store=store,
+        queue=queue,
+    )
+    client = TestClient(app)
+
+    bad = client.post(
+        "/webhook/feishu",
+        json={
+            "header": {"event_id": "evt_recover", "event_type": "x"},
+            "event": {"document_id": "d1", "folder_token": "totally_unknown"},
+        },
+    )
+    assert bad.status_code == 400
+    assert not list(store.redis.scan_iter("webhook:event_seen:*"))
+
+    good = client.post(
+        "/webhook/feishu",
+        json={
+            "header": {"event_id": "evt_recover", "event_type": "x"},
+            "event": {"document_id": "d1", "folder_token": "fld_team_a"},
+        },
+    )
+    assert good.status_code == 200
+    assert good.json().get("msg") == "ok"
+
+
 def test_url_verification_returns_challenge():
     settings = ExecutorSettings(
         feishu_encrypt_key="",

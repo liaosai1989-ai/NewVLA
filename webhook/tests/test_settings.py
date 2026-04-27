@@ -1,4 +1,10 @@
-from webhook_cursor_executor.settings import ExecutorSettings, load_routing_config
+import pytest
+
+from webhook_cursor_executor.settings import (
+    ExecutorSettings,
+    _raise_if_env_file_bans_cursor_cli_command,
+    load_routing_config,
+)
 
 
 def test_settings_defaults_and_route_loading(tmp_path):
@@ -29,3 +35,31 @@ def test_settings_defaults_and_route_loading(tmp_path):
     assert settings.cursor_cli_model == "composer-2-fast"
     assert settings.doc_runlock_ttl_seconds >= settings.cursor_run_timeout_seconds
     assert routing.folder_routes[0].dataset_id == "dataset_team_a"
+
+
+def test_env_file_rejects_cursor_cli_command_key(tmp_path):
+    p = tmp_path / ".env"
+    p.write_text("CURSOR_CLI_COMMAND=cursor\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="CURSOR_CLI_COMMAND"):
+        _raise_if_env_file_bans_cursor_cli_command(path=p)
+
+
+def test_settings_reject_cursor_cli_command_in_environ(
+    tmp_path, monkeypatch
+) -> None:
+    routes = tmp_path / "routes.json"
+    routes.write_text(
+        """
+        {
+          "pipeline_workspace": {
+            "path": "C:\\\\workspaces\\\\pipeline",
+            "cursor_timeout_seconds": 7200
+          },
+          "folder_routes": []
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CURSOR_CLI_COMMAND", "cursor")
+    with pytest.raises(ValueError, match="CURSOR_CLI_COMMAND"):
+        ExecutorSettings(folder_routes_file=str(routes))

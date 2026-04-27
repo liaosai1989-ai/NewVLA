@@ -15,7 +15,7 @@
 - `AGENTS.md` 模板
 - `rules` 规则文件
 - 其他运行该管线所需的工作区上下文
-- **入轨用辅助工具**（人触发的**非** webhook 主链路进程）：`onboard/` 提供可安装的 `feishu-onboard` CLI，按设计创建飞书 App 文件夹、尝试企业内可见、**两阶段**将业务映射与索引写入**仓库根** `.env`（与 `DIFY_TARGET_*` 等合同一致，详见仓库内 `docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md`），并在输入完成后在目标工作区执行 `lark-cli` 初始化
+- **入轨用辅助工具**（人触发的**非** webhook 主链路进程）：`onboard/` 提供可安装的 `feishu-onboard` CLI，按设计创建飞书 App 文件夹、对 `folder_token` 做**夹级** `subscribe`（`file.created_in_folder_v1` 等事件链前提，见同 spec 修订说明与 `onboard/README.md`）、为分享委托人加文件夹协作者、**两阶段**将业务映射与索引写入**仓库根** `.env`（与 `DIFY_TARGET_*` 等合同一致，详见仓库内 `docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md`），并在输入完成后在目标工作区执行 `lark-cli` 初始化
 
 ## 不要混淆
 

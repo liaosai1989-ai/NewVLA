@@ -1,5 +1,14 @@
 # Webhook Cursor Executor Design
 
+## 修订说明（2026-04-27 Cursor CLI 可执行：仅 PATH、废弃 `CURSOR_CLI_COMMAND`）
+
+本文件以下正文保留原文，不直接改写原设计内容。若与正文 §13.1「建议新增配置项」等旧表述冲突，以本修订说明为准：
+
+- **可执行文件**：`webhook` 启动 Cursor 子进程时**固定**命令名 `cursor`，在运行时用 `shutil.which` 从 **PATH** 解析**绝对路径**后再 `subprocess.run`；**禁止**在根 `.env` 或**部署环境变量**中配置可执行文件路径/别名（已废弃的 `CURSOR_CLI_COMMAND` 若仍存在，**拉取 `ExecutorSettings` 即 `ValueError`，HTTP/RQ 进程无法启动**）。
+- **根 `.env` 中仍与 Cursor 相关的合法键**（以 `webhook/src/webhook_cursor_executor/settings.py` 为准）：`CURSOR_CLI_MODEL`、`CURSOR_CLI_CONFIG_PATH`（及各类 TTL、Redis、路由文件路径等）。**勿**与正文里「`cursor_cli_*=…` 连等号」的示意混为一谈；环境变量名以 `settings` 的 `Field(alias=...)` 为准。
+- **运行时失败语义**：若 PATH 上找不到 `cursor`，`launch` 会结束本次 run，summary 含 `cursor_not_in_path:` 前缀，退出码 127 一类（以实现对齐为准）。
+- **升级自旧版**：根 `.env`、K8s/系统环境变量、CI secret 中若仍设置 `CURSOR_CLI_COMMAND`，**必须整行/整键删除**，并保证运行 `webhook`/`rq worker` 的账户 **PATH 能解析到 `cursor`**。详见 `webhook/操作手册.md` 升级小节。
+
 ## 修订说明（2026-04-27 onboard 初始化前置条件补充）
 
 本文件以下正文保留原文，不直接改写原设计内容。

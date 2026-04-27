@@ -4,6 +4,7 @@ import httpx
 
 from feishu_onboard.feishu_client import (
     CREATE_FOLDER_URL,
+    DRIVE_V1_FILE_SUBSCRIBE_TMPL,
     DRIVE_V1_PERMISSION_MEMBERS_TMPL,
     EXPLORER_V2_CREATE_FOLDER_TMPL,
     FeishuOnboardClient,
@@ -170,3 +171,19 @@ def test_create_folder_with_parent_token(httpx_mock) -> None:
     body = json.loads(req.content.decode("utf-8"))
     assert body.get("name") == "child"
     assert body.get("folder_token") == "fld999"
+
+
+def test_subscribe_folder_file_created(httpx_mock) -> None:
+    sub_url = (
+        f"{DRIVE_V1_FILE_SUBSCRIBE_TMPL.format(token='fld_sub')}"
+        "?file_type=folder&event_type=file.created_in_folder_v1"
+    )
+    httpx_mock.add_response(method="POST", url=sub_url, json={"code": 0, "data": {}})
+    c = FeishuOnboardClient(httpx.Client(), "tok")
+    c.subscribe_folder_file_created("fld_sub")
+    assert len(httpx_mock.get_requests()) == 1
+    r = httpx_mock.get_requests()[0]
+    req = r[0] if isinstance(r, tuple) else r
+    assert "subscribe" in str(req.url)
+    assert "file_type=folder" in str(req.url)
+    assert "file.created_in_folder_v1" in str(req.url)

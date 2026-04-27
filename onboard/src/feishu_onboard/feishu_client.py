@@ -11,6 +11,8 @@ CREATE_FOLDER_URL = "https://open.feishu.cn/open-apis/drive/v1/files/create_fold
 DRIVE_V1_PERMISSION_MEMBERS_TMPL = "https://open.feishu.cn/open-apis/drive/v1/permissions/{token}/members"
 # 与 env 默认一致，供单测/调用方白名单
 _FOLDER_DELEGATE_PERMS = frozenset({"view", "edit", "full_access"})
+# 夹级订阅：使 file.created_in_folder_v1 可投递，后续链路上再对新建 docx 做文档级 subscribe
+DRIVE_V1_FILE_SUBSCRIBE_TMPL = "https://open.feishu.cn/open-apis/drive/v1/files/{token}/subscribe"
 # 应用/用户身份下「我的空间」根；create_folder 在部分租户不接受 folder_token 空串时需用显式根 token
 ROOT_FOLDER_META_URL = "https://open.feishu.cn/open-apis/drive/explorer/v2/root_folder/meta"
 # 历史版「在指定父文件夹下创建子文件夹」；与 drive/v1 并存，部分 tenant 上 v1 仍 10003 时可用
@@ -186,6 +188,34 @@ class FeishuOnboardClient:
             if e.code not in _CREATE_FOLDER_RETRY_WITH_ROOT:
                 raise
         return self._create_folder_explorer_v2(name, root)
+
+    def subscribe_folder_file_created(self, folder_token: str) -> None:
+        """POST .../drive/v1/files/{folder_token}/subscribe?file_type=folder&event_type=file.created_in_folder_v1
+
+        与同应用下其他入轨产品一致，建夹后需夹级 subscribe，云文档/编辑类事件链才能稳定。
+        """
+        ft = (folder_token or "").strip()
+        if not ft:
+            raise FeishuApiError(-1, "subscribe_folder_file_created: folder_token 为空")
+        url = DRIVE_V1_FILE_SUBSCRIBE_TMPL.format(token=ft)
+        r = self._client.post(
+            url,
+            params={"file_type": "folder", "event_type": "file.created_in_folder_v1"},
+            headers={"Authorization": f"Bearer {self._token}"},
+        )
+        try:
+            data = r.json()
+        except json.JSONDecodeError:
+            raise FeishuApiError(
+                -1,
+                f"POST drive/v1/files/.../subscribe HTTP {r.status_code} 非 JSON: {r.text[:400]}",
+            ) from None
+        if not isinstance(data, dict):
+            raise FeishuApiError(-1, "subscribe 响应非对象")
+        try:
+            _check_code(data)
+        except FeishuApiError as e:
+            raise FeishuApiError(e.code, f"POST drive/v1/files/subscribe (folder file.created_in_folder) — {e.msg}") from e
 
     def add_folder_user_collaborator(
         self,
