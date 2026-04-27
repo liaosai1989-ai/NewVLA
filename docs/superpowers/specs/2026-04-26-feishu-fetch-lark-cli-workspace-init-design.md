@@ -2,6 +2,10 @@
 
 > **落地状态：已落地**（2026-04-27；与仓库 `feishu_fetch` 包、`feishu_fetch/README.md`、`onboard/操作手册.md` 工作区根与 `cwd` 约定及 `BugList.md` BUG-001 包内核对一致。）
 
+## 修订说明
+
+- **2026-04-27（`lark-cli docs +fetch` 参数）：** 现行已测 `lark-cli` 在 `docs +fetch --api-version v2` 下使用 **`--doc`** 传入文档 URL 或 token，**不支持** `--document-id`；`--scope` 的合法取值为 `full|outline|range|keyword|section`，**不再**使用与旧 CLI 假设相关的 **`--scope docx`**。仓库 `feishu_fetch` 子进程 argv 已改为 `--doc` + 既有 `--doc-format` / `--detail` 等，整篇读取依赖 v2 默认 `scope`。**以下正文若仍出现 `--document-id` 或 `--scope docx`，视为历史表述，以本段为准；正文不改写。**
+
 ## 1. 背景与问题
 
 当前仓库已经确定：

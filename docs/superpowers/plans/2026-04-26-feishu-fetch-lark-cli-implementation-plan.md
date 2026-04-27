@@ -1,5 +1,7 @@
 # Feishu Fetch Lark CLI Implementation Plan
 
+> **修订（2026-04-27，`cloud_docx` 与 `lark-cli`）：** 若下文任务或示例仍出现 `docs +fetch` 的 **`--document-id`** 或 **`--scope docx`**，以**本段为准**覆盖：现行 CLI 为 **`--doc <URL|token>`**；无 `--document-id`；整篇读取不依赖 `scope=docx`。仓库真源为 `feishu_fetch/src/feishu_fetch/facade.py`。**以下正文不改写。**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在 `c:\WorkPlace\NewVLA\feishu_fetch` 落地一个只负责飞书正文抓取的 v1 模块，对外暴露单一 `fetch_feishu_content()` 入口，按 spec 使用 `lark-cli` 抓取正文或导出文件，并在需要时用 `MarkItDown` 转 Markdown。

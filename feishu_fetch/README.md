@@ -19,12 +19,13 @@
 | `FEISHU_REQUEST_TIMEOUT_SECONDS` | 默认请求超时（秒，须为正数；可被 `FeishuFetchRequest.timeout_seconds` 覆盖） |
 | `FEISHU_APP_ID` | 与 `lark config show` 中 `appId` 一致，用于预检 |
 | `FEISHU_APP_SECRET` | **本模块不读取**（初始化仍由 `onboard` 或人工完成 `lark-cli config init`） |
-| `FEISHU_FETCH_ENV_FILE` | 可选；若设，须为**绝对路径**，指向管线工作区根下的 `.env` |
+| `FEISHU_FETCH_ENV_FILE` | 可选；可写在 **`cwd` 下 `.env`** 或设进程环境变量；须为**绝对路径**，指向管线工作区根下的 `.env`；**环境变量优先** |
 
 **解析真源：**
 
 - 若调用方显式传入 `load_feishu_fetch_settings(env_file=Path)` / `fetch_feishu_content(..., env_file=...)`，则使用该文件；
-- 否则若 `FEISHU_FETCH_ENV_FILE` 有值，则使用该路径；
+- 否则若进程环境变量 **`FEISHU_FETCH_ENV_FILE`** 有值，则使用该路径（优先于下面「指针」）；
+- 否则若 **`Path.cwd() / ".env"`** 存在且其中含键 **`FEISHU_FETCH_ENV_FILE`**（须为**绝对路径**），则使用该路径指向的文件作为真源；
 - 否则 `env_file = Path.cwd() / ".env"`，**约定此时进程 `cwd` 为工作区根**（与 `onboard` 中 `lark_config_init(cwd=...)` 的目录一致）。
 
 **全部 lark 子进程**（`--help`、`config show`、各抓取子命令）在 `subprocess` 中均传 **`cwd=settings.workspace_root`**（即 `env_file` 的父目录）。

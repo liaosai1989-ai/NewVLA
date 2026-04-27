@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -256,6 +257,61 @@ def _ensure_output_dir(path: Path) -> Path:
     return path
 
 
+def _as_posix_relative_to_workspace(workspace_root: Path, target: Path) -> str:
+    root = workspace_root.resolve()
+    abs_target = target.resolve()
+    try:
+        rel = abs_target.relative_to(root)
+    except ValueError:
+        raise build_error(
+            code="request_error",
+            reason="output_dir 解析后的路径必须位于工作区根目录内",
+            advice="将 output_dir 设在工作区根下的子目录（如 .cursor_task/...）后重试",
+            detail={"workspace_root": str(root), "target": str(abs_target)},
+        ) from None
+    return rel.as_posix()
+
+
+def _normalize_downloaded_file_path(path: Path) -> Path:
+    """lark-cli +download 常用无扩展名落盘；按魔数或纯文本特征补后缀，供 finalize 白名单匹配。"""
+    if path.suffix:
+        return path
+    try:
+        head = path.read_bytes()[:8]
+    except OSError:
+        return path
+    dest: Path | None = None
+    if head.startswith(b"%PDF"):
+        dest = path.with_suffix(".pdf")
+    elif head.startswith(b"PK\x03\x04"):
+        try:
+            with zipfile.ZipFile(path, "r") as zf:
+                names = zf.namelist()
+            if any(n.startswith("word/") for n in names):
+                dest = path.with_suffix(".docx")
+            elif any(n.startswith("xl/") for n in names):
+                dest = path.with_suffix(".xlsx")
+        except zipfile.BadZipFile:
+            dest = None
+    elif head.startswith(b"\x89PNG\r\n\x1a\n"):
+        dest = path.with_suffix(".png")
+    elif head.startswith(b"\xff\xd8\xff"):
+        dest = path.with_suffix(".jpg")
+    elif head.startswith(b"GIF87a") or head.startswith(b"GIF89a"):
+        dest = path.with_suffix(".gif")
+    if dest is None:
+        try:
+            peek = path.read_text(encoding="utf-8")[:4096]
+        except UnicodeDecodeError:
+            return path
+        if peek.lstrip().startswith("#"):
+            dest = path.with_suffix(".md")
+    if dest is None or dest == path:
+        return path
+    path.replace(dest)
+    return dest
+
+
 def _write_text_artifact(
     output_dir: Path, *, base_name: str, suffix: str, content: str
 ) -> Path:
@@ -370,9 +426,7 @@ def _fetch_cloud_docx(
         "xml",
         "--detail",
         "simple",
-        "--scope",
-        "docx",
-        "--document-id",
+        "--doc",
         request.document_id or "",
     ]
     display = [c, *sub]
@@ -413,24 +467,45 @@ def _download_drive_file(
     c = _LARK_CLI
     download_dir = output_dir / "_raw_download"
     download_dir.mkdir(parents=True, exist_ok=True)
-    existing_files = {
-        item.resolve() for item in _list_candidate_files(download_dir)
-    }
+    token = (request.file_token or "").strip()
+    out_abs = (download_dir / f"_{token}_download").resolve()
+    out_rel = _as_posix_relative_to_workspace(settings.workspace_root, out_abs)
     sub = [
         "drive",
         "+download",
         "--file-token",
-        request.file_token or "",
-        "--output-dir",
-        str(download_dir),
+        token,
+        "--output",
+        out_rel,
+        "--overwrite",
     ]
     display = [c, *sub]
     to = _timeout_for(request, settings)
     completed = _run_lark_cli(settings, sub, timeout_seconds=to)
-    _require_success(
+    stdout = _require_success(
         completed, display_cmd=display, ingest_kind="drive_file", doc_type=request.doc_type
     )
-    return _pick_new_file(download_dir, existing_files=existing_files)
+    saved: Path | None = None
+    try:
+        payload = json.loads((stdout or "").strip() or "{}")
+        if isinstance(payload, dict):
+            data = payload.get("data") or {}
+            if isinstance(data, dict):
+                sp = str(data.get("saved_path") or "").strip()
+                if sp:
+                    saved = Path(sp)
+    except json.JSONDecodeError:
+        pass
+    final = saved if saved and saved.is_file() else out_abs
+    final = _normalize_downloaded_file_path(final)
+    if not final.is_file():
+        raise build_error(
+            code="runtime_error",
+            reason="下载完成但未找到已保存的本地文件",
+            advice="检查 lark-cli 返回路径与 --output 是否一致，以及工作区 cwd 是否为根目录",
+            detail={"command": display, "expected": str(out_abs), "saved_path": str(saved)},
+        )
+    return final
 
 
 def _extract_export_file_token(payload: dict[str, Any]) -> str | None:
