@@ -1,5 +1,7 @@
 # Feishu Fetch Lark CLI Design
 
+> **落地状态：已落地**（2026-04-28；与仓库 `feishu_fetch/` 一致；初始化层合同见已落地 `2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md`。）
+
 ## 修订说明（2026-04-26 单应用 bot 抓取前提补充）
 
 本文件以下正文保留原文，不直接改写原设计内容。

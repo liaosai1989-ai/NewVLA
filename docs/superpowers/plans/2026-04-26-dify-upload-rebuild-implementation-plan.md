@@ -1,5 +1,7 @@
 # Dify Upload Rebuild Implementation Plan
 
+> **落地状态：已落地**（2026-04-28；实现见 `dify_upload/`；根 `.env` / `dify_target_key` 口径见姊妹 spec 文首修订说明与 `2026-04-26-root-env-and-dify-target-contract-design.md`。）
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在 `c:\WorkPlace\NewVLA\dify_upload` 落地一个只负责 CSV 上传的 Dify 模块，接收已解析完成的目标配置，调用 Dify `create-by-file` 接口，成功时返回结构化结果，失败时稳定区分配置错误、请求错误、响应错误。

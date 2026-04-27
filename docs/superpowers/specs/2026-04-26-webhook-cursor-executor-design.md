@@ -1,5 +1,7 @@
 # Webhook Cursor Executor Design
 
+> **落地状态：已落地**（2026-04-28；与仓库 `webhook` 模块及下文各修订说明一致；运行时键名与 PATH 约定以 `webhook/src/webhook_cursor_executor/settings.py` 为准。）
+
 ## 修订说明（2026-04-27 Cursor CLI 可执行：仅 PATH、废弃 `CURSOR_CLI_COMMAND`）
 
 本文件以下正文保留原文，不直接改写原设计内容。若与正文 §13.1「建议新增配置项」等旧表述冲突，以本修订说明为准：

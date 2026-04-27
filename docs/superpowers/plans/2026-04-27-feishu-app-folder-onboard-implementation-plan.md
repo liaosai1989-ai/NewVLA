@@ -1,5 +1,7 @@
 # Feishu App Folder Onboard Implementation Plan
 
+> **落地状态：实现已合入（`onboard/`）；清单/签字验收未闭环**（2026-04-28；与正文 §6.2/§7.3 及文首修订说明、`onboard/README.md` 一致。）
+
 ## 修订说明
 
 - **2026-04-27**：与 [feishu-app-folder-onboard-design v2026-04-27 修订](../specs/2026-04-26-feishu-app-folder-onboard-design.md) 对齐 — `validate_qa_rule_file` 允许 `prompts/rules/...` 与 `rules/...`；`test_validate` / README / 操作手册已同步。下文内嵌代码块中旧版「仅 `rules/`」段以**仓库 `onboard/src/feishu_onboard/validate.py` 现网实现**为准。
