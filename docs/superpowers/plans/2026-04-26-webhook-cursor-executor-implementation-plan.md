@@ -1,5 +1,19 @@
 ﻿# Webhook Cursor Executor Implementation Plan
 
+## 修订说明（2026-04-27 `cursor` 仅 PATH、正文代码片段中 `CURSOR_CLI_COMMAND` 已过时）
+
+本 plan 以下正文**保留原文**，不整段替换。正文中若出现 `cursor_cli_command` / `CURSOR_CLI_COMMAND`、或 `launch_cursor_agent(..., command=settings.cursor_cli_command)` 等，均视为**历史草稿**，与**当前仓库实现**不一致。
+
+**当前实现要点（以源码为准）**：
+
+- `webhook/src/webhook_cursor_executor/cursor_cli.py`：固定 `cursor`，`shutil.which` 后执行；`launch_cursor_agent` **无** `command` 参数。
+- `webhook/src/webhook_cursor_executor/settings.py`：**无** `cursor_cli_command` 字段；根 `.env` 或环境变量出现 `CURSOR_CLI_COMMAND` → 构造 `ExecutorSettings` 即失败（阻断启动，避免静默旁路）。
+- `webhook/src/webhook_cursor_executor/scheduler.py`：PATH 未找到可执行文件时 `finalize` 为失败，summary 含 `cursor_not_in_path:`。
+
+升级与运维说明见 `webhook/操作手册.md`、本仓 `ENV-OLD-TO-NEW.md`。
+
+---
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在 `c:\WorkPlace\NewVLA\webhook` 内落地一个可运行的 webhook 调度模块，严格按 spec 实现飞书协议层幂等、`document_id` 调度合并、`folder_token` 路由、`.cursor_task/{run_id}/` 注入目录、Max Mode 同步后启动 Cursor CLI。

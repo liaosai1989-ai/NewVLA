@@ -1,13 +1,13 @@
 {
   "pipeline_workspace": {
-    "path": "C:\\workspaces\\pipeline",
+    "path": "C:\\Cursor WorkSpace\\NewVLA",
     "cursor_timeout_seconds": 7200
   },
   "folder_routes": [
     {
-      "folder_token": "fld_team_a",
+      "folder_token": "ByvwfE7O2lREj4dW7C8cI8WJnxg",
       "qa_rule_file": "prompts/rules/qa/folders/folder_rule_template.mdc",
-      "dataset_id": "dataset_team_a"
+      "dataset_id": "8aa735a4-f8fc-46c8-9620-c8df159ddc8e"
     }
   ]
 }

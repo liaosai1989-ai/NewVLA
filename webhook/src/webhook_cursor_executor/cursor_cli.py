@@ -1,9 +1,23 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+# 固定命令名，仅由 PATH 解析（不经 .env / 配置写可执行路径）；与 onboard `lark-cli` 约定一致。
+_CURSOR_CLI = "cursor"
+
+
+def _resolve_cursor_exe() -> str:
+    w = shutil.which(_CURSOR_CLI)
+    if w:
+        return w
+    raise FileNotFoundError(
+        f"PATH 中未找到命令 {_CURSOR_CLI!r}。请安装 Cursor CLI，"
+        f"将可执行文件所在目录加入用户或系统 PATH 后重开服务/终端。"
+    )
 
 
 @dataclass
@@ -30,14 +44,14 @@ def ensure_max_mode_config(*, config_path: Path) -> None:
 
 def launch_cursor_agent(
     *,
-    command: str,
     cwd: Path,
     prompt_text: str,
     model: str,
     timeout_seconds: int,
 ) -> CursorRunResult:
+    exe = _resolve_cursor_exe()
     completed = subprocess.run(
-        [command, "agent", "--model", model, prompt_text],
+        [exe, "agent", "--model", model, prompt_text],
         cwd=str(cwd),
         capture_output=True,
         text=True,

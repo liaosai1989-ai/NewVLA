@@ -247,6 +247,8 @@ def run_onboard(
                 folder_token = existing_tok.strip()
                 folder_url = (m.get(f"FEISHU_FOLDER_{R}_URL") or "").strip() or None
 
+            fclient.subscribe_folder_file_created(folder_token or "")
+
             public_ok, public_err = fclient.add_folder_user_collaborator(
                 folder_token or "",
                 member_type=delegate_mt,

@@ -3,8 +3,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
@@ -16,11 +19,11 @@ from rq import Queue
 from webhook_cursor_executor.models import DocumentSnapshot
 from webhook_cursor_executor.settings import (
     ExecutorSettings,
-    FolderRoute,
     RoutingConfig,
     get_executor_settings,
     load_routing_config,
 )
+from webhook_cursor_executor.feishu_folder_resolve import resolve_folder_route
 from webhook_cursor_executor.state_store import RedisStateStore
 from webhook_cursor_executor.worker import RQQueueAdapter
 
@@ -47,16 +50,6 @@ def parse_request_body(encrypt_key: str, body: bytes) -> dict[str, Any]:
     iv, ciphertext = raw[:16], raw[16:]
     plaintext = unpad(AES.new(key, AES.MODE_CBC, iv).decrypt(ciphertext), AES.block_size)
     return json.loads(plaintext.decode("utf-8"))
-
-
-def resolve_folder_route(
-    routing_config: RoutingConfig,
-    folder_token: str,
-) -> FolderRoute | None:
-    for route in routing_config.folder_routes:
-        if route.folder_token == folder_token:
-            return route
-    return None
 
 
 def verification_token_ok(
@@ -135,12 +128,38 @@ def create_app(
                 {"error": "missing event_id or document_id"},
                 status_code=400,
             )
-        if not state_store.try_mark_event_seen(event_id):
-            return JSONResponse({"code": 0, "msg": "duplicate"})
+
+        logger.info(
+            "feishu_event received event_id=%s event_type=%s document_id=%s folder_token_empty=%s",
+            event_id,
+            event_type,
+            document_id,
+            not bool(folder_token),
+        )
+
+        # drive.file.edit_v1 等无 folder_token：列目录无法在飞书 3s 内稳定完成（含隧道 RTT），改入队由 worker 解析
+        if not folder_token:
+            if not settings.feishu_app_id.strip() or not settings.feishu_app_secret.strip():
+                return JSONResponse(
+                    {
+                        "error": "folder_token_missing_and_no_feishu_app_credentials",
+                    },
+                    status_code=400,
+                )
+            queue.enqueue(
+                "ingest_feishu_document_event",
+                event_id=event_id,
+                document_id=document_id,
+                event_type=event_type,
+                folder_token="",
+            )
+            return JSONResponse({"code": 0, "msg": "ok"})
 
         route = resolve_folder_route(routing_config, folder_token)
         if route is None:
             return JSONResponse({"error": "folder_route_not_resolved"}, status_code=400)
+        if not state_store.try_mark_event_seen(event_id):
+            return JSONResponse({"code": 0, "msg": "duplicate"})
 
         version = state_store.next_version(document_id)
         snapshot = DocumentSnapshot(

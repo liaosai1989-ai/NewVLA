@@ -1,6 +1,6 @@
 # feishu-onboard
 
-在管线仓库根为飞书 **App 文件夹** 做入轨：创建文件夹、为「分享委托人」加云空间文件夹协作者、两阶段写根目录 `.env`，并在输入完成后对当前工作区执行 `lark-cli config init`（`--app-secret-stdin`）。
+在管线仓库根为飞书 **App 文件夹** 做入轨：创建文件夹、对 `folder_token` 做[夹级事件订阅](https://open.feishu.cn/document/server-docs/docs/drive-v1/event/subscribe)（`file.created_in_folder_v1` 前提，与 `webhook/scripts/subscribe_byvwf_tds.py` 一致）、为「分享委托人」加云空间文件夹协作者、两阶段写根目录 `.env`，并在输入完成后对当前工作区执行 `lark-cli config init`（`--app-secret-stdin`）。
 
 ## 安装
 
@@ -92,14 +92,17 @@ feishu-onboard
 
 1. 校验输入与 `.env` 中 Dify 组、本地 `qa_rule_file` 指向的真实文件。
 2. 若无 token 或带了 `--force-new-folder`：调飞书 API 建夹（父级留空时先取根目录元数据，见上表 `parent_folder_token`），并**阶段 A** 原子写入 `FEISHU_FOLDER_<KEY>_` 等键。
-3. 为该文件夹调用 `POST .../permissions/.../members?type=folder` 加**分享委托人**协作者；失败不撤销已建夹，见主仓 spec。
-4. 在**仓根**对 `lark-cli` 做 `config init`（`app_secret` 经 stdin，不出现在命令行参数）。
-5. 仅当**加协作者成功**与 **`lark-cli`+校验**均成功时，**阶段 B** 写入/追加 `FEISHU_FOLDER_ROUTE_KEYS`（把本 `route_key` 登记进索引进而可进索引）。
+3. 对当前 `folder_token` 调 **`POST .../drive/v1/files/{token}/subscribe?file_type=folder&event_type=file.created_in_folder_v1`**（续跑/已有 token 时也会再调一次），失败整次入轨失败并暴露飞书 `code`。
+4. 为该文件夹调用 `POST .../permissions/.../members?type=folder` 加**分享委托人**协作者；失败不撤销已建夹，见主仓 spec。
+5. 在**仓根**对 `lark-cli` 做 `config init`（`app_secret` 经 stdin，不出现在命令行参数）。
+6. 仅当**加协作者成功**与 **`lark-cli`+校验**均成功时，**阶段 B** 写入/追加 `FEISHU_FOLDER_ROUTE_KEYS`（把本 `route_key` 登记进索引进而可进索引）。
+
+**`verify-delegate`：** 只测建夹 + 协作者，**不**做夹级 subscribe（见子命令说明）。
 
 ### 9. 看结果：终端文案与退出码
 
 - **0**：全成功，阶段 B 已写 `FEISHU_FOLDER_ROUTE_KEYS`。
-- **2**：校验失败、飞书硬错误、与已有 route 冲突、缺少 `FEISHU_APP_ID`/`FEISHU_APP_SECRET`、缺少 `FEISHU_ONBOARD_FOLDER_DELEGATE_OPEN_ID` 等（未进入「部分成功」语义）。
+- **2**：校验失败、飞书硬错误（**含** subscribe / 协作者 / 其它 `FeishuApiError`）、与已有 route 冲突、缺少 `FEISHU_APP_ID`/`FEISHU_APP_SECRET`、缺少 `FEISHU_ONBOARD_FOLDER_DELEGATE_OPEN_ID` 等（未进入「部分成功」语义）。
 - **3**：部分完成（常见：加协作者未成功，或 lark/校验未过）：阶段 A 可能已写入，但**未**写阶段 B 索引；可按 stderr 中的 `folder_token`/URL 在飞书侧补授权后**再跑**（具体以主仓 spec 为准）。
 - **1**：Ctrl+C 或程序未捕获异常。
 
@@ -154,6 +157,7 @@ feishu-onboard
 - 应用权限：`auth/v3/tenant_access_token`（[文档入口](https://open.feishu.cn/document/ukTMukTMukTM/ukTMzUjLwMzM14SNyE3LTAj) 以平台为准）
 - 根目录元数据（父级留空建夹前）：`GET .../drive/explorer/v2/root_folder/meta`
 - 建目录：`POST .../drive/v1/files/create_folder`
+- 夹级事件（与 [`subscribe_byvwf_tds.py`](../webhook/scripts/subscribe_byvwf_tds.py) 同契约）：`POST .../drive/v1/files/{folder_token}/subscribe?file_type=folder&event_type=file.created_in_folder_v1`（[文档](https://open.feishu.cn/document/server-docs/docs/drive-v1/event/subscribe)）；开发者后台须已申请对应事件类型
 - 企内/全员在飞书侧由人改「分享」；实现**不**调 `PATCH .../public`，只调一次 [增加协作者 / drive v1 / `type=folder`](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/permission-member/create)。根 `.env` **必须**含 **`FEISHU_ONBOARD_FOLDER_DELEGATE_OPEN_ID`**=用户 [open_id](https://open.feishu.cn)（`ou_…`），可选 **`FEISHU_ONBOARD_FOLDER_DELEGATE_MEMBER_TYPE`**、**`FEISHU_ONBOARD_FOLDER_DELEGATE_PERM`**（见 env 缺省）。`OnboardResult.public_ok` 仅表示协作者已加。`lark-cli` 的调用：入轨**只**用命令名 `lark-cli` + PATH（`lark_cli._resolve_lark_cli_exe`）。`feishu_fetch` 亦固定同命令名，**不**读已废弃的 `LARK_CLI_COMMAND`。见 `lark_cli.py`。
 
 典型码（随官方可能调整）：`1061045`、`1062507`、`1063003` 等。详细表与重试见仓库内 `docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md` **§6.2**。

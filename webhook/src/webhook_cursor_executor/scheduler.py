@@ -115,13 +115,26 @@ def launch_cursor_run_job(
         )
         return
 
-    result = launch_cursor_agent(
-        command=settings.cursor_cli_command,
-        cwd=Path(snapshot.workspace_path),
-        prompt_text=bundle.prompt_path.read_text(encoding="utf-8"),
-        model=settings.cursor_cli_model,
-        timeout_seconds=snapshot.cursor_timeout_seconds,
-    )
+    try:
+        result = launch_cursor_agent(
+            cwd=Path(snapshot.workspace_path),
+            prompt_text=bundle.prompt_path.read_text(encoding="utf-8"),
+            model=settings.cursor_cli_model,
+            timeout_seconds=snapshot.cursor_timeout_seconds,
+        )
+    except FileNotFoundError as exc:
+        finalize_document_run_job(
+            run_id=run_id,
+            document_id=document_id,
+            version=version,
+            exit_code=127,
+            status="failed",
+            summary=f"cursor_not_in_path:{exc}",
+            state_store=state_store,
+            queue=queue,
+        )
+        return
+
     queue.enqueue(
         "finalize_document_run_job",
         run_id=run_id,

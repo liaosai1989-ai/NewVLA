@@ -1,5 +1,11 @@
 # Root Env And Dify Target Contract Implementation Plan
 
+## 修订说明（2026-04-27 webhook `ExecutorSettings` 与 `CURSOR_CLI_COMMAND`）
+
+本文件以下关于联动模块的正文**保留原文**。正文中**嵌入的** `ExecutorSettings` 代码片段若仍含 `cursor_cli_command: ... Field(..., alias="CURSOR_CLI_COMMAND")`，与**当前 `webhook` 实现**不一致，视为**过时**。
+
+**当前行为（以 `webhook/src/webhook_cursor_executor/settings.py` 为准）**：不提供 `cursor_cli_command`；固定通过 PATH 解析命令名 `cursor`（`cursor_cli.py` 内 `shutil.which`）；根 `.env` 或环境变量**禁止**再写 `CURSOR_CLI_COMMAND`（否则设置加载失败）。与 `onboard`/`feishu_fetch` 对 `lark-cli` 的「不经 `*_COMMAND` 配可执行路径」同一类约定。
+
 ## 修订说明（2026-04-27 MarkItDown 固定依赖口径补充）
 
 本文件以下正文保留原文，不直接改写原计划内容。

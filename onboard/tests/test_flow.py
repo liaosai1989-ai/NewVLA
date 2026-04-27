@@ -66,6 +66,8 @@ def test_full_success_stage_b(tmp_path, monkeypatch) -> None:
                 200,
                 json={"code": 0, "data": {"token": "nod_root", "id": "1", "user_id": "2"}},
             )
+        if "/subscribe" in u:
+            return httpx.Response(200, json={"code": 0, "data": {}})
         if "create_folder" in u:
             return httpx.Response(200, json={"code": 0, "data": {"token": "fld_new", "url": "https://f"}})
         if "permissions" in u and "members" in u and "public" not in u:
@@ -112,6 +114,8 @@ def test_collaborator_fails_no_stage_b(tmp_path, monkeypatch) -> None:
                 200,
                 json={"code": 0, "data": {"token": "nod_root", "id": "1", "user_id": "2"}},
             )
+        if "/subscribe" in u:
+            return httpx.Response(200, json={"code": 0, "data": {}})
         if "create_folder" in u:
             return httpx.Response(200, json={"code": 0, "data": {"token": "fld_p", "url": "u"}})
         if "permissions" in u and "members" in u and "public" not in u:
@@ -156,6 +160,8 @@ def test_lark_fails_no_stage_b(tmp_path, monkeypatch) -> None:
                 200,
                 json={"code": 0, "data": {"token": "nod_root", "id": "1", "user_id": "2"}},
             )
+        if "/subscribe" in u:
+            return httpx.Response(200, json={"code": 0, "data": {}})
         if "create_folder" in u:
             return httpx.Response(200, json={"code": 0, "data": {"token": "fld_l", "url": "u"}})
         if "permissions" in u and "members" in u and "public" not in u:
@@ -262,6 +268,8 @@ def test_resume_only_index_stage_b(tmp_path, monkeypatch) -> None:
             return httpx.Response(200, json={"code": 0, "tenant_access_token": "t0", "expire": 60})
         if "create_folder" in u:
             return httpx.Response(500, text="no create in resume only B")
+        if "/subscribe" in u:
+            return httpx.Response(200, json={"code": 0, "data": {}})
         if "permissions" in u and "members" in u and "public" not in u:
             return httpx.Response(200, json={"code": 0, "data": {}})
         return httpx.Response(500, text="?" + u)
@@ -302,6 +310,8 @@ def test_lark_cli_not_in_path_file_not_found(tmp_path, monkeypatch) -> None:
             return httpx.Response(
                 200, json={"code": 0, "data": {"token": "r", "id": "1", "user_id": "2"}}
             )
+        if "/subscribe" in u:
+            return httpx.Response(200, json={"code": 0, "data": {}})
         if "create_folder" in u:
             return httpx.Response(200, json={"code": 0, "data": {"token": "fld_lark", "url": "u"}})
         if "permissions" in u and "members" in u and "public" not in u:
