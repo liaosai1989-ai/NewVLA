@@ -127,7 +127,7 @@ def upload_csv_to_dify(
         with httpx.Client(
             verify=target.http_verify,
             timeout=target.timeout_seconds,
-            follow_redirects=False,
+            follow_redirects=True,
         ) as client:
             response = client.post(
                 url,
@@ -141,8 +141,27 @@ def upload_csv_to_dify(
         ) from exc
 
     if response.status_code >= 400:
+        server_hint = ""
+        hdrs = getattr(response, "headers", None)
+        ct = ""
+        if hdrs is not None:
+            try:
+                ct = (hdrs.get("content-type") or "").lower()
+            except Exception:
+                ct = ""
+        if "application/json" in ct:
+            try:
+                err_body = response.json()
+                if isinstance(err_body, dict):
+                    code = err_body.get("code")
+                    msg = err_body.get("message")
+                    if code is not None or msg is not None:
+                        server_hint = f"; server={code}: {msg}"
+            except (AttributeError, json.JSONDecodeError, ValueError, TypeError):
+                pass
         raise DifyRequestError(
-            f"dify request error: upload failed with status={response.status_code} reason={response.reason_phrase}; check api_key or api_base"
+            f"dify request error: upload failed with status={response.status_code} "
+            f"reason={response.reason_phrase}{server_hint}"
         )
 
     body = _parse_json_body(response)
