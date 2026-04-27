@@ -1,0 +1,23 @@
+---
+description: plan 落地时须 renew 根 AGENTS.md 与可分发至工作区的 AGENTS/rules 模板
+alwaysApply: true
+---
+
+# plan 落地时更新 `AGENTS.md` 与 `rules/` 资产
+
+在 **本仓库** 中，某份 **plan 已落地**（实现完成且与 design/spec 一致）时，**必须** 审视并 **renew** 下列与「工作区 AGENTS 与规则」相关的资产，避免只改实现、文档与可注入物脱节。
+
+## 1. 根目录 `AGENTS.md`
+
+- 本仓库的 **长期说明、边界、参考链路、初始化与提示词资产约定** 等若因本次落地发生变化，**须同步更新** 根目录 `AGENTS.md`。
+
+## 2. 目标工作区中的 `AGENTS.md` 与 `rules/`（本仓内的模板源）
+
+- 实际注入到 **执行用 Cursor 工作区** 的，是以下模板（在工作区中即表现为 `AGENTS.md` 与 `rules/**`）：
+  - `prompts/AGENTS.txt` → 工作区 `AGENTS.md`
+  - `prompts/rules/**` → 工作区 `rules/`
+- 上述路径的 **renew 细则、与 docedit 的关系、`task_prompt` 等边界** 以 `renew-prompts.mdc` 为准；落地阶段须一并满足该规则。
+
+## 自检
+
+合并前可自问：若有人按本仓 **初始化新工作区**，根 `AGENTS.md` 的表述是否与当前实现一致？拷入的 **AGENTS 与 `rules/` 模板** 是否与本次行为、多 folder 映射及输出契约一致？不一致则先改对应文件再合并。

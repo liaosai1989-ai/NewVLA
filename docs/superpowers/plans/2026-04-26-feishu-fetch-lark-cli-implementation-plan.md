@@ -25,7 +25,8 @@
   - `sheet` 固定导出为 `.xlsx`
 - 文件格式策略：
   - 直读格式保留原文件
-  - 需转换格式交给 `MarkItDown` 转 Markdown
+  - 需转换格式固定交给 `MarkItDown` 转 Markdown
+  - 不暴露 `MARKITDOWN_COMMAND` 之类的配置项来切换转换器
   - 非白名单格式立即失败
 - 依赖策略：
   - `lark-cli` 软依赖，按路径检测

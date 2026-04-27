@@ -46,9 +46,12 @@
 | ID | 功能点 | 优先级 | 状态 | 提出时间 | spec 索引 | plan 索引 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | NTH-001 | 重构 Dify 上传模块 | P1 | 已实现 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-dify-upload-rebuild-design.md` | `docs/superpowers/plans/2026-04-26-dify-upload-rebuild-implementation-plan.md` | 已按 plan 完成纯 CSV 上传模块重建 |
-| NTH-002 | webhook 补齐 Dify 目标配置合同 | P1 | 待评估 | 2026-04-26 | - | - | 当前 webhook 设计仅稳定覆盖 `dataset_id`，未明确 `api_base`、`api_key` |
+| NTH-002 | webhook 补齐 Dify 目标配置合同 | P1 | 已出 spec | 2026-04-26 | `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | - | 当前 webhook 设计仅稳定覆盖 `dataset_id`，现已明确 `api_base`、`api_key` 走模块根 `.env`，`dataset_id` 必须运行时显式传入 |
 | NTH-003 | RQ 并发多个 Cursor CLI 的设计与实现优化 | P1 | 待评估 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-webhook-cursor-executor-design.md` | - | 当前 spec 已覆盖基础并发语义，后续需单独优化稳定性与实现细节 |
-| NTH-004 | 根目录 .env 与各模块配置消费合同收口 | P1 | 待评估 | 2026-04-26 | - | - | 统一配置文件已整理，但 `webhook`、`dify_upload`、`feishu_fetch` 与 legacy 配置的实际消费边界尚未完全对齐 |
+| NTH-004 | 根目录 .env 与各模块配置消费合同收口 | P1 | 已出 spec | 2026-04-26 | `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | - | 已明确各模块直接消费根 `.env` 各自分组，LLM 不注入基础设施配置，legacy Feishu 维持兼容保留 |
+| NTH-005 | 飞书文件夹-Dify 知识库-QA 合同一对一映射收口 | P1 | 已出 spec | 2026-04-26 | `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | - | 已明确 `folder_token` 必须一对一命中 `dify_target_key`、`dataset_id` 与 `qa_rule_file`，Agent 不负责推断 |
+| NTH-006 | 飞书 App 文件夹创建与权限初始化工具 | P1 | 已实现 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md` | `docs/superpowers/plans/2026-04-27-feishu-app-folder-onboard-implementation-plan.md` | 根目录 `onboard/` 已提供 `feishu-onboard` 包与单测、README，按 spec/plan 两阶段写根 `.env` 与 lark 初始化，详见正文 |
+| NTH-007 | 管线执行工作区物理目录初始化（与入轨解耦） | P2 | 待评估 | 2026-04-27 | - | - | 与 NTH-006 互补：`feishu-onboard` 不创建独立生产 Cursor 工作区目录，仅操作仓根 `.env` 与本机 lark；若部署需要物理分离的执行目录，应另立 spec/plan 或接现有初始化链 |
 
 ## 正文记录
 
@@ -99,7 +102,7 @@
 ## NTH-002 webhook 补齐 Dify 目标配置合同
 
 - 提出时间：2026-04-26
-- 当前状态：待评估
+- 当前状态：已出 spec
 - 优先级：P1
 - 背景/问题：
   - 当前 webhook 相关设计里，运行时合同稳定覆盖的是 `dataset_id`。
@@ -118,28 +121,29 @@
   - 运行时合同
   - `dify_upload` 调用适配层
 - spec 索引：
-  - -
+  - `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md`
 - plan 索引：
   - -
 - 备注：
-  - 当前仅记录问题点，后续需单独判断是否立新 spec。
+  - 已与 `NTH-004` 合并收口。
+  - 已确定 `dataset_id` 必须运行时显式传入，根 `.env` 不允许提供默认值。
 
-### 方案草案
+### 方案结论
 
-- 方案一：继续只在运行时注入 `dataset_id`，`api_base`、`api_key` 由工作区或进程本地配置提供，再由适配层组装完整目标。
-- 方案二：扩展 webhook 运行时合同，把完整 Dify 目标一起注入。
-- 方案三：引入独立配置映射层，但仍保持 `dify_upload` 只吃解析后的目标。
+- `dataset_id` 必须由运行时显式传入。
+- `api_base`、`api_key` 由 `dify_upload` 自己从根 `.env` 读取。
+- LLM / `task_context.json` 不注入 Dify 静态连接配置。
 
 ### 验收标准
 
-- webhook 侧明确 `api_base`、`api_key` 的来源与责任层。
-- `dify_upload` 的输入合同能与 webhook 设计闭环。
-- 不再依赖实现阶段临时猜测 Dify 目标配置来源。
+- webhook 侧明确 `api_base`、`api_key` 不进入运行时合同。
+- `dify_upload` 的输入合同与 `dataset_id` 显式传入口径闭环。
+- 根 `.env` 不再承担默认 `dataset_id` 注入职责。
 
 ## NTH-003 RQ 并发多个 Cursor CLI 的设计与实现优化
 
 - 提出时间：2026-04-26
-- 当前状态：待评估
+- 当前状态：已出 spec
 - 优先级：P1
 - 背景/问题：
   - 当前 webhook spec 已定义“多文档可并发、单文档尽量不并发”的基础语义。
@@ -179,7 +183,7 @@
 ## NTH-004 根目录 .env 与各模块配置消费合同收口
 
 - 提出时间：2026-04-26
-- 当前状态：待评估
+- 当前状态：已出 spec
 - 优先级：P1
 - 背景/问题：
   - 当前仓库根目录 `.env` 已完成按模块分组整理，覆盖了 `webhook`、`dify_upload`、`feishu_fetch` 以及用户要求保留的 legacy Feishu 集成配置。
@@ -201,20 +205,138 @@
   - `feishu_fetch/`
   - 相关 README / spec / plan 文档
 - spec 索引：
-  - -
+  - `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md`
 - plan 索引：
   - -
 - 备注：
-  - 本条是配置治理型待优化点，当前先记录问题，不直接改变现有模块边界。
+  - 已与 `NTH-002` 合并收口。
+  - 已明确各模块直接消费根 `.env` 各自配置分组，不新增独立 resolver 层。
 
-### 方案草案
+### 方案结论
 
-- 方案一：保持 `webhook` 继续直接读根 `.env`，`dify_upload` 与 `feishu_fetch` 通过单独适配层从根配置组装运行参数。
-- 方案二：为 `dify_upload`、`feishu_fetch` 各自补最小 `from_env` 入口，但仍不让业务路由逻辑进入模块内部。
-- 方案三：把 legacy Feishu 配置单独迁到兼容分组或独立文件，根 `.env` 只保留当前主链路必需配置。
+- `webhook`、`dify_upload`、`feishu_fetch` 都直接读取根 `.env` 中属于自己的配置分组。
+- LLM 只传业务运行时参数，不传 `api_key`、`app_secret`、命令路径、默认超时这类静态配置。
+- legacy Feishu 配置继续保留在根 `.env`，但不扩大主链路默认依赖。
 
 ### 验收标准
 
-- 能明确说清每一组配置由谁读取、在哪一层组装、传给谁。
+- 能明确说清每一组配置由哪个模块直接读取。
 - `webhook`、`dify_upload`、`feishu_fetch` 的配置来源不再互相打架。
 - legacy Feishu 配置的定位清晰，不再长期处于“先留着但没人负责”的状态。
+
+## NTH-005 飞书文件夹-Dify 知识库-QA 合同一对一映射收口
+
+- 提出时间：2026-04-26
+- 当前状态：待评估
+- 优先级：P1
+- 背景/问题：
+  - 当前系统已经有 `folder_token` 路由语义，也有 `dataset_id` 和 QA 规则文件注入语义。
+  - 但“飞书文件夹、Dify 知识库、QA 合同”三者的一对一绑定关系还没有单独收口成稳定合同。
+  - 如果后续只是零散地加配置，容易退化成运行时猜测、隐式回退或映射漂移。
+- 目标：
+  - 明确不同飞书文件夹必须触发不同业务合同。
+  - 明确每个飞书文件夹稳定绑定一套 Dify 知识库和一份 QA 合同。
+  - 明确映射结果由上游显式注入，Agent 不负责自行推断目标合同。
+- 预期收益：
+  - 让业务分流规则和上传目标保持稳定，不因实现细节临时漂移。
+  - 降低新增文件夹或新增业务线时的配置歧义。
+  - 让 `webhook`、运行时上下文、工作区规则资产三者边界更清晰。
+- 影响范围：
+  - `webhook/` 路由配置与任务注入
+  - `task_context.json` 合同
+  - `rules/` 或对应 QA 合同模板资产
+  - Dify 数据集目标配置
+- spec 索引：
+  - `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md`
+- plan 索引：
+  - -
+- 备注：
+  - 已与 `NTH-002`、`NTH-004` 一并收口。
+  - 核心约束是一对一绑定和显式注入，不接受运行时猜测。
+
+### 方案结论
+
+- 由 `webhook` 路由配置维护一对一映射，命中后显式注入 `folder_token`、`dify_target_key`、`dataset_id`、`qa_rule_file`。
+- Agent 不负责推断 Dify 实例、目标知识库或 QA 合同。
+- 根 `.env` 只负责 `dify_target_key -> Dify 静态实例配置`，不承担业务映射。
+
+### 验收标准
+
+- 能明确说清每个飞书文件夹对应哪一套 Dify 实例、哪一个知识库和哪一份 QA 合同。
+- 不同飞书文件夹触发的业务合同不再依赖 Agent 推断。
+- 新增或调整映射时，只需要改一处主配置，不会出现多处定义互相打架。
+
+## NTH-006 飞书 App 文件夹创建与权限初始化工具
+
+- 提出时间：2026-04-26
+- 当前状态：已实现
+- 优先级：P1
+- 背景/问题：
+  - 按飞书规则，本仓库业务链路使用的目标文件夹必须是 App 文件夹，不能直接使用用户个人文件夹。
+  - 当前仓库缺少一套辅助工具，去自动创建符合要求的飞书文件夹并完成基础权限初始化。
+  - 现有配置链路里，往往要先拿到飞书文件夹 token，才能继续把映射关系写回根 `.env`。
+- 目标：
+  - 提供一个基于飞书 OpenAPI 和飞书 App ID 的辅助工具。
+  - 该工具能自动创建对应的 App 文件夹，并把文件夹设置成企业内部可见。
+  - 创建成功后，能拿到目标 `folder_token` 并回写到根 `.env`，供后续映射配置继续使用。
+- 预期收益：
+  - 避免人工先去飞书侧建目录、再手抄 token，减少配置错误。
+  - 保证本仓库使用的文件夹类型符合飞书约束，不会混入用户个人文件夹。
+  - 让“创建文件夹 -> 拿 token -> 写配置”形成可重复执行的标准化链路。
+- 影响范围：
+  - 飞书 OpenAPI 调用封装
+  - 文件夹初始化辅助工具
+  - 仓库根 `.env` 回写逻辑
+  - 与 `folder_token` 相关的映射配置流程
+- spec 索引：
+  - `docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md`
+- plan 索引：
+  - `docs/superpowers/plans/2026-04-27-feishu-app-folder-onboard-implementation-plan.md`
+- 备注：
+  - 本条是初始化辅助工具，不改变现有 `webhook` 与 Agent 的主链路边界。
+  - 重点是把“App 文件夹约束”和“token 回写配置”收口成可执行工具，而不是靠人工步骤维持。
+  - 2026-04-27：已按 plan 在仓库根 `onboard/` 落地可编辑安装的 Python 包 `feishu-onboard`（入口 `feishu-onboard`），含校验、两阶段根 `.env` 原子写、飞书 token/建夹/公开权限、`lark-cli config init` 与 `show` 校验、编排与交互 CLI；`pytest` 覆盖核心路径；操作说明见 `onboard/README.md`；与 webhook 接根 `.env` 路由属并行后续工作，不在 NTH-006 本条目范围内。
+
+### 方案草案
+
+- 已采纳 plan：独立子包于 `onboard/`，不并入 webhook 运行时；按 spec 两阶段写（阶段 A 业务分组、阶段 B `FEISHU_FOLDER_ROUTE_KEYS` 门禁于 public + lark 均成功之后）。
+- 原方案一/二/三中的方向已收敛为当前包形态；批量初始化、自 `webhook` 派生 `folder_routes.example.json` 等仍为 plan 声明的非本条目必达项。
+
+### 验收标准
+
+- 能通过飞书 OpenAPI 基于 App 身份创建出可用于本仓库的 App 文件夹。
+- 创建后能自动把文件夹设置为企业内部可见，避免继续依赖人工补权限（失败时按 spec 进入部分完成态，不写索引）。
+- 工具能拿到正确的 `folder_token` 并稳定回写到根 `.env` 指定配置项（与 spec §5 键名一致，含两阶段与续跑/冲突语义，以实现与 `onboard` 内单测为准）。
+
+## NTH-007 管线执行工作区物理目录初始化（与入轨解耦）
+
+- 提出时间：2026-04-27
+- 当前状态：待评估
+- 优先级：P2
+- 背景/问题：
+  - `feishu-onboard`（NTH-006）成功路径为：飞书 App 夹、两阶段写**仓库根** `.env`、在**同一仓根**执行 `lark-cli config init`。
+  - 它不生成「单独一套用于 RQ / webhook 触发生产任务的 Cursor 工作区」目录树；维护仓在 `AGENTS.md` 中亦与「已生成的业务执行工作区」区分。
+  - 若运维期望「入轨=顺带落一个物理生产工作区（拷 `prompts`→`AGENTS`、物化 `rules` 等）」，当前工具不包含该步，易与职责边界产生误解。
+- 目标：
+  - 明确入轨与「执行工作区」初始化是否拆分；若需要，用独立 spec/plan 定义目录结构、与根 `.env` 的关系、谁负责拷贝/物化模板。
+  - 可选：CLI 子命令、安装脚本或部署流水线节点，在指定路径搭好执行区但不重复 NTH-006 已有能力。
+- 预期收益：
+  - 减少「以为 onboard 会建工作区」的配置事故。
+  - 需要物理隔离时有一致、可复现的搭盘方式。
+- 影响范围：
+  - 与 `onboard/`、工作区模板 `prompts/**`、未来执行器/部署文档的边界说明
+- spec 索引：-
+- plan 索引：-
+- 备注：
+  - 不反向要求改动已落地的 NTH-006 行为，除非经评审后合并需求。
+
+### 方案草案
+
+- 方案一：仅文档在 README / 操作手册中强化「不建工作区」一句，不新增实现。
+- 方案二：独立小工具或 `feishu-onboard workspace init <path>`，从模板生成目录并提示与根 `.env` 同机/同盘约束。
+- 方案三：生产工作区全由现有外部编排（镜像、CI、RQ 机）完成，本仓只维护模板资产。
+
+### 验收标准
+
+- 能向操作者说清：入轨成功 ≠ 已创建独立生产工作区目录；若需要后者，有明确入口或文档步骤。
+- 若实现方案二，有最小验收（目录结构、`AGENTS`/`rules` 来源、不泄露密钥）。

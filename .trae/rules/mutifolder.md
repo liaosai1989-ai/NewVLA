@@ -8,18 +8,18 @@
 - 不同飞书 `folder` 只承担业务分流职责。
 - 每个 `folder_token` 一对一绑定：
   - 一个独立的 QA 角色提示词文件
-  - 一个对应的 Dify `dataset_id`
+  - 一套 Dify 接入配置（Dify API、Dify key、`dataset_id`），以支持多 Dify 实例；三者同属一条命中记录，不可只配 `dataset_id` 而省略 API/key。
 
 ## 文件边界
 
 - QA 提示词文件存放在 Cursor 工作区的 `rules/` 目录中。
 - 该文件作为对应 `folder` 的专属处理规则。
-- `dataset_id` 属于运行时配置，不写死在提示词文件内。
+- Dify API、Dify key、`dataset_id` 均属运行时配置，不写死在提示词文件内。
 
 ## 运行流程
 
 - Webhook 收到事件后，先根据 `folder_token` 命中对应配置。
-- 命中后，将 `qa_rule_file` 和 `dataset_id` 写入本次运行的 `task_context.json`。
+- 命中后，将 `qa_rule_file` 与本次命中的 Dify 接入信息（API、key、`dataset_id`）写入本次运行的 `task_context.json`。
 - `task_prompt.md` 必须明确要求 Agent：
   - 先读取 `task_context.json`
   - 再读取指定的 QA 规则文件

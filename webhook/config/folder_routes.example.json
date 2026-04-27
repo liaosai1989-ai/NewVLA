@@ -6,7 +6,7 @@
   "folder_routes": [
     {
       "folder_token": "fld_team_a",
-      "qa_rule_file": "rules/team_a_qa.md",
+      "qa_rule_file": "prompts/rules/qa/folders/folder_rule_template.mdc",
       "dataset_id": "dataset_team_a"
     }
   ]

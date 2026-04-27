@@ -1,5 +1,71 @@
 # Webhook Cursor Executor Design
 
+## 修订说明（2026-04-27 onboard 初始化前置条件补充）
+
+本文件以下正文保留原文，不直接改写原设计内容。
+
+针对 `onboard` 当前正文与 `lark-cli` 初始化 owner 已确认收口到 `onboard` 的新口径，现补充以下修订说明；若与正文旧表述冲突，以本修订说明为准：
+
+- 第一版中，目标工作区的 `lark-cli` 首次初始化由 `onboard` 负责；`webhook` 只假设目标工作区已经完成该前置初始化
+- `webhook` 不负责在每次任务启动前重新执行 `lark-cli config init`
+- `webhook` 不负责给 `feishu_fetch` 注入 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 或其他飞书凭证来替代工作区初始化
+- 若正文中仍出现“onboarding 只负责产出 JSON 路由配置”一类旧表述，应按当前口径理解为：`onboard` 负责创建飞书 App 文件夹、回写根 `.env` 真源，并在当前工作区完成一次 `lark-cli` 初始化
+- `launch_cursor_run_job` 的环境前置条件应补充理解为：目标工作区已由 `onboard` 完成必要初始化，至少包括当前工作区 `lark-cli` 可执行且已完成配置
+- 若目标工作区未完成 `onboard`，或当前工作区的 `lark-cli` 尚未初始化，则该次运行应按“环境前置条件未满足”失败，而不是由 `webhook` 运行时自动修复
+- 这种失败场景下，`webhook` 负责记录清晰错误原因并结束本次 run；不自动补做 `config init`，不临时切换飞书应用身份
+- 后续实现与测试应新增一条明确口径：当工作区未初始化或 `lark-cli` 未完成配置时，任务失败原因必须可区分为环境前置条件问题，而不是混淆为业务路由或正文抓取逻辑错误
+- 相关联动口径以 [2026-04-26-feishu-app-folder-onboard-design.md](file:///c:/WorkPlace/NewVLA/docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md) 与 [2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md](file:///c:/WorkPlace/NewVLA/docs/superpowers/specs/2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md) 的当前正文为准
+
+## 修订说明（2026-04-27 评审收口）
+
+本文件以下正文保留原文，不直接改写原设计内容。
+
+针对本轮评审与 `onboard` 当前正文口径，现补充以下修订说明；若与正文旧表述冲突，以本修订说明为准：
+
+- `folder_token -> dify_target_key + dataset_id + qa_rule_file` 的业务映射真源来自仓库根 `.env`
+- `webhook` 后续对 route 的解析输入，必须直接来自根 `.env` 中的显式 route 索引和 route 分组
+- `webhook/config/folder_routes.example.json` 不再作为运行时真源，只能作为示例文件或由根 `.env` 导出的派生产物
+- `webhook` 路由结果、文档快照与 `task_context.json`，都必须显式包含 `dify_target_key`、`dataset_id`、`qa_rule_file`
+- 旧正文中的快照示例若缺少 `dify_target_key`，应按合同缺失理解，而不是视为可省略字段
+- 根 `.env` 中的 `FEISHU_FOLDER_<KEY>_QA_RULE_FILE` 必须保存运行时工作区 `rules/` 目录下的相对路径，例如 `rules/qa/folders/team_a.mdc`
+- 当前单工作区抓取链路默认只服务于根 `.env` 中这一组 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 对应的同一飞书应用 bot 身份
+- `folder_token` 只承担业务分流职责，不承担在运行时切换飞书应用身份职责；若目标文档对该同一应用不可访问，应按权限问题失败
+- 若正文中仍出现“onboarding 只负责产出 JSON 路由配置”“运行时只需要 `dataset_id`”或“`folder_token` 只映射到 `qa_rule_file + dataset_id`”一类旧表述，均按本修订说明覆盖理解
+
+## 修订说明（2026-04-26 NTH-006 联动补充）
+
+本文件以下正文保留原文，不直接改写原设计内容。
+
+针对 `NTH-006 飞书 App 文件夹创建与权限初始化工具` 与新的“.env 唯一真源”口径，现补充以下修订说明；若与正文旧表述冲突，以本修订说明为准：
+
+- `folder_token -> dify_target_key + dataset_id + qa_rule_file` 的业务映射真源来自仓库根 `.env`
+- `webhook/config/folder_routes.example.json` 不再作为运行时真源，只能作为示例文件或由根 `.env` 派生出的产物
+- `onboard` 负责创建飞书 App 文件夹并把 route 真源写回根 `.env`
+- `webhook` 后续应以根 `.env` 中的显式 route 索引和 route 分组作为解析输入
+- 当前单工作区抓取链路默认只服务于根 `.env` 中这一组 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 对应的同一飞书应用 bot 身份
+- `folder_token` 只承担业务分流职责，不承担在运行时切换飞书应用身份职责；若目标文档对该同一应用不可访问，应按权限问题失败
+- 若正文中仍出现“onboarding 只负责产出 JSON 路由配置”一类旧表述，均按本修订说明覆盖理解
+
+## 修订说明
+
+本文件以下正文保留原文，不直接改写原设计内容。
+
+针对后续已确认的 `NTH-002`、`NTH-004`、`NTH-005`，现补充以下修订口径；若与正文旧表述冲突，以本修订说明为准：
+
+- `folder_token` 的业务映射已收口为：
+  - `folder_token -> dify_target_key + dataset_id + qa_rule_file`
+- `task_context.json` 的运行时显式注入字段，至少应包含：
+  - `dify_target_key`
+  - `dataset_id`
+  - `qa_rule_file`
+- Agent 不负责推断 Dify 目标：
+  - 调用上传工具时，必须显式传入 `dify_target_key` 与 `dataset_id`
+- 根 `.env` 不再承担默认业务目标注入职责：
+  - 不允许依赖默认 `DIFY_DATASET_ID`
+  - Dify 实例静态配置由 `dify_target_key` 命中
+- Dify 静态配置解析口径以 [2026-04-26-root-env-and-dify-target-contract-design.md](file:///c:/WorkPlace/NewVLA/docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md) 为准
+- 若正文中仍出现“只注入 `dataset_id` 即可”或“`folder_token` 只映射到 `qa_rule_file` 与 `dataset_id`”等旧表述，均按本修订说明覆盖理解
+
 ## 1. 背景与目标
 
 本设计用于重构旧的 `feishu_webhook` 参考实现，在 `c:\WorkPlace\NewVLA\webhook` 下建设一套新的 webhook 调度模块。

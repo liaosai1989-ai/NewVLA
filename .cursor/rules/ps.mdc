@@ -1,0 +1,20 @@
+---
+description: Windows PowerShell 中勿用 &&；写文件须显式 UTF-8 避免中文乱码
+alwaysApply: true
+---
+
+# PowerShell（Windows）
+
+- **不要**在命令链里用 bash 式 `` `&&` `` 串联。在常见 **Windows PowerShell 5.1** 中不支持；用分号 `;` 做顺序执行，或按需使用 `if ($?) { }` 等。PowerShell 7+ 虽支持 `&&`，若需兼容 5.1 仍建议避免依赖 `` `&&` ``。
+- 向磁盘**写文本文件**时，**必须**显式指定 **UTF-8** 编码，避免中文乱码。
+
+## 示例
+
+```powershell
+# 顺序执行（不用 &&）
+Get-Item . ; Set-Location ..
+
+# 写 UTF-8 文本
+Set-Content -Path .\out.txt -Value "中文内容" -Encoding utf8
+"中文" | Out-File -FilePath .\out2.txt -Encoding utf8
+```

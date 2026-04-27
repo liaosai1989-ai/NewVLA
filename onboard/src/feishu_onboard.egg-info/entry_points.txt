@@ -1,0 +1,2 @@
+[console_scripts]
+feishu-onboard = feishu_onboard.cli:main

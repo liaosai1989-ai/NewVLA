@@ -2,7 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from feishu_fetch import FeishuFetchError, FeishuFetchRequest, FeishuFetchResult
+from feishu_fetch import (
+    FeishuFetchError,
+    FeishuFetchRequest,
+    FeishuFetchResult,
+    FeishuFetchSettings,
+    load_feishu_fetch_settings,
+)
 
 
 def test_request_validation_and_error_contract(tmp_path):
@@ -62,7 +68,7 @@ def test_request_validation_and_error_contract(tmp_path):
 def test_error_string_returns_llm_message():
     error = FeishuFetchError(
         code="dependency_error",
-        llm_message="飞书正文抓取失败：找不到 lark-cli。\n处理建议：先确认本机已安装并可直接执行 lark-cli。",
+        llm_message="飞书正文抓取失败：PATH 上找不到命令 'lark-cli'。\n处理建议：先确认本机已安装。",
         detail={"command": ["lark-cli", "--help"]},
     )
 
@@ -88,3 +94,5 @@ def test_package_root_exports_stable_public_api():
     assert FeishuFetchRequest.__name__ == "FeishuFetchRequest"
     assert FeishuFetchResult.__name__ == "FeishuFetchResult"
     assert FeishuFetchError.__name__ == "FeishuFetchError"
+    assert FeishuFetchSettings.__name__ == "FeishuFetchSettings"
+    assert callable(load_feishu_fetch_settings)

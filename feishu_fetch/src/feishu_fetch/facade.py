@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import importlib
 import json
 import re
@@ -8,10 +9,14 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .config import FeishuFetchSettings, load_feishu_fetch_settings
 from .errors import FeishuFetchError, build_error
+from .lark_env import app_id_from_config_show_payload, parse_config_show_json
 from .models import FeishuFetchRequest, FeishuFetchResult
 
-DEFAULT_TIMEOUT_SECONDS = 60.0
+# 子进程入口：仅 PATH 上 `lark-cli`；不入 FeishuFetchSettings、不从 .env 读（见 config 对 LARK_CLI_COMMAND 的拒绝）
+_LARK_CLI = "lark-cli"
+
 DIRECT_READABLE_SUFFIXES = {
     ".png",
     ".jpg",
@@ -43,9 +48,201 @@ EXPORT_FORMATS = {"doc": "docx", "docx": "docx", "sheet": "xlsx"}
 TASK_RESULT_POLLS = 3
 TASK_RESULT_SLEEP_SECONDS = 1.0
 
+# stderr 子串 → §10.3 应用/资源权限类失败（不整段全匹配）
+_PERMS_EN = (
+    "permission denied",
+    "access denied",
+    "forbidden",
+    "insufficient permission",
+    "403",
+)
+_PERMS_ZH = ("无权限", "没有权限", "权限不足", "无访问权限")
 
-def _timeout_for(request: FeishuFetchRequest) -> float:
-    return float(request.timeout_seconds or DEFAULT_TIMEOUT_SECONDS)
+
+def _timeout_for(request: FeishuFetchRequest, settings: FeishuFetchSettings) -> float:
+    if request.timeout_seconds is not None:
+        return float(request.timeout_seconds)
+    return float(settings.request_timeout_seconds)
+
+
+def _stderr_suggests_app_permission_error(stderr: str) -> bool:
+    text = stderr or ""
+    if any(frag in text for frag in _PERMS_ZH):
+        return True
+    low = text.lower()
+    return any(frag in low for frag in _PERMS_EN)
+
+
+def _run_lark_cli(
+    settings: FeishuFetchSettings,
+    subcommand_args: list[str],
+    *,
+    timeout_seconds: float,
+) -> subprocess.CompletedProcess[str]:
+    display_cmd = [_LARK_CLI, *subcommand_args]
+    try:
+        resolved = shutil.which(_LARK_CLI)
+        if not resolved:
+            raise FileNotFoundError(_LARK_CLI)
+        full_cmd = [resolved, *subcommand_args]
+        return subprocess.run(
+            full_cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=timeout_seconds,
+            check=False,
+            cwd=settings.workspace_root,
+        )
+    except FileNotFoundError as exc:
+        raise build_error(
+            code="dependency_error",
+            reason=f"PATH 上找不到命令 {_LARK_CLI!r}",
+            advice="安装 lark-cli 并将可执行文件所在目录加入 PATH",
+            detail={"command": display_cmd},
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        c = _LARK_CLI
+        raise build_error(
+            code="runtime_error",
+            reason=f"调用 {c!r} 超时",
+            advice="确认飞书接口状态和 request / 默认 timeout 是否足够",
+            detail={"command": display_cmd, "stderr_tail": str(exc)},
+        ) from exc
+
+
+def _ensure_lark_cli_available(
+    settings: FeishuFetchSettings, *, timeout_seconds: float
+) -> None:
+    completed = _run_lark_cli(
+        settings, ["--help"], timeout_seconds=timeout_seconds
+    )
+    if completed.returncode != 0:
+        c = _LARK_CLI
+        raise build_error(
+            code="dependency_error",
+            reason=f"{c!r} 无法正常启动或 --help 失败",
+            advice="在终端手动执行该命令的 --help，确认安装与 PATH 正常",
+            detail={
+                "command": [c, "--help"],
+                "exit_code": completed.returncode,
+                "stderr_tail": (completed.stderr or "")[-500:],
+            },
+        )
+
+
+def _ensure_lark_config_matches_env(
+    settings: FeishuFetchSettings, *, timeout_seconds: float
+) -> None:
+    c = _LARK_CLI
+    display = [c, "config", "show"]
+    completed = _run_lark_cli(
+        settings, ["config", "show"], timeout_seconds=timeout_seconds
+    )
+    if completed.returncode != 0:
+        raise build_error(
+            code="lark_config_error",
+            reason=f"{c!r} 未成功执行 config show（未初始化或本机 lark 配置不可用）",
+            advice="在管线工作区根完成 lark-cli 登录与 config init 后再重试",
+            detail={
+                "command": display,
+                "exit_code": completed.returncode,
+                "stderr_tail": (completed.stderr or "")[-500:],
+            },
+        )
+    try:
+        data = parse_config_show_json(completed.stdout)
+        shown = app_id_from_config_show_payload(data)
+    except ValueError as exc:
+        raise build_error(
+            code="lark_config_error",
+            reason=f"无法从 {c!r} config show 解析 appId",
+            advice="确认 lark-cli 已初始化，且 config show 的 stdout 为含 appId 的单段 JSON",
+            detail={"command": display, "error": str(exc)},
+        ) from exc
+    if shown != settings.feishu_app_id:
+        raise build_error(
+            code="lark_config_error",
+            reason="lark 配置中的 appId 与根 .env 中 FEISHU_APP_ID 不一致",
+            advice="使工作区 lark 配置与 .env 为同一飞书应用，或修正 FEISHU_APP_ID",
+            detail={
+                "expected": settings.feishu_app_id,
+                "config_show_app_id": shown,
+                "command": display,
+            },
+        )
+
+
+def _require_success(
+    completed: subprocess.CompletedProcess[str],
+    *,
+    display_cmd: list[str],
+    ingest_kind: str,
+    doc_type: str | None,
+) -> str:
+    if completed.returncode != 0:
+        err_tail = (completed.stderr or "")[-500:]
+        if _stderr_suggests_app_permission_error(completed.stderr or ""):
+            cname = display_cmd[0] if display_cmd else "lark"
+            raise build_error(
+                code="permission_error",
+                reason=f"{cname!r} 执行失败，疑似应用对目标无权限或资源不可访问",
+                advice="在飞书开放平台与会话中确认应用对文档/云文件的访问权限后重试",
+                detail={
+                    "command": display_cmd,
+                    "exit_code": completed.returncode,
+                    "stderr_tail": err_tail,
+                    "ingest_kind": ingest_kind,
+                    "doc_type": doc_type,
+                },
+            )
+        cname = display_cmd[0] if display_cmd else "lark"
+        raise build_error(
+            code="runtime_error",
+            reason=f"{cname!r} 执行失败",
+            advice="检查飞书权限、登录态和命令参数后重试",
+            detail={
+                "command": display_cmd,
+                "exit_code": completed.returncode,
+                "stderr_tail": err_tail,
+                "ingest_kind": ingest_kind,
+                "doc_type": doc_type,
+            },
+        )
+    return completed.stdout
+
+
+def _parse_json(
+    stdout: str,
+    *,
+    display_cmd: list[str],
+    ingest_kind: str,
+    doc_type: str | None,
+) -> dict[str, Any]:
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        c0 = display_cmd[0] if display_cmd else "lark"
+        raise build_error(
+            code="runtime_error",
+            reason=f"{c0!r} 输出不是合法 JSON",
+            advice="先确认当前命令是否仍返回 JSON envelope，再重试",
+            detail={
+                "command": display_cmd,
+                "stderr_tail": stdout[-500:],
+                "ingest_kind": ingest_kind,
+                "doc_type": doc_type,
+            },
+        ) from exc
+    if not isinstance(payload, dict):
+        c0 = display_cmd[0] if display_cmd else "lark"
+        raise build_error(
+            code="runtime_error",
+            reason=f"{c0!r} 输出结构异常",
+            advice="检查当前命令的返回结构是否仍符合设计合同",
+            detail={"command": display_cmd, "ingest_kind": ingest_kind, "doc_type": doc_type},
+        )
+    return payload
 
 
 def _slugify(text: str | None, *, fallback: str) -> str:
@@ -57,113 +254,6 @@ def _slugify(text: str | None, *, fallback: str) -> str:
 def _ensure_output_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
-
-
-def _resolve_command(args: list[str]) -> list[str]:
-    if not args:
-        return args
-    resolved = shutil.which(args[0])
-    if not resolved:
-        raise FileNotFoundError(args[0])
-    return [resolved, *args[1:]]
-
-
-def _run_command(
-    args: list[str], *, timeout_seconds: float
-) -> subprocess.CompletedProcess[str]:
-    try:
-        command = _resolve_command(args)
-        return subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=timeout_seconds,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise build_error(
-            code="dependency_error",
-            reason="找不到 lark-cli",
-            advice="先确认本机已安装并且命令行可直接执行 lark-cli",
-            detail={"command": args},
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise build_error(
-            code="runtime_error",
-            reason="调用 lark-cli 超时",
-            advice="确认飞书接口状态和 timeout_seconds 是否足够",
-            detail={"command": args, "stderr_tail": str(exc)},
-        ) from exc
-
-
-def _ensure_lark_cli_available(*, timeout_seconds: float) -> None:
-    completed = _run_command(["lark-cli", "--help"], timeout_seconds=timeout_seconds)
-    if completed.returncode != 0:
-        raise build_error(
-            code="dependency_error",
-            reason="lark-cli 无法正常启动",
-            advice="先在终端手动执行 lark-cli --help，确认安装与 PATH 正常",
-            detail={
-                "command": ["lark-cli", "--help"],
-                "exit_code": completed.returncode,
-                "stderr_tail": completed.stderr[-500:],
-            },
-        )
-
-
-def _require_success(
-    completed: subprocess.CompletedProcess[str],
-    *,
-    args: list[str],
-    ingest_kind: str,
-    doc_type: str | None,
-) -> str:
-    if completed.returncode != 0:
-        raise build_error(
-            code="runtime_error",
-            reason="lark-cli 执行失败",
-            advice="检查飞书权限、登录态和命令参数后重试",
-            detail={
-                "command": args,
-                "exit_code": completed.returncode,
-                "stderr_tail": completed.stderr[-500:],
-                "ingest_kind": ingest_kind,
-                "doc_type": doc_type,
-            },
-        )
-    return completed.stdout
-
-
-def _parse_json(
-    stdout: str,
-    *,
-    args: list[str],
-    ingest_kind: str,
-    doc_type: str | None,
-) -> dict[str, Any]:
-    try:
-        payload = json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        raise build_error(
-            code="runtime_error",
-            reason="lark-cli 输出不是合法 JSON",
-            advice="先确认当前命令是否仍返回 JSON envelope，再重试",
-            detail={
-                "command": args,
-                "stderr_tail": stdout[-500:],
-                "ingest_kind": ingest_kind,
-                "doc_type": doc_type,
-            },
-        ) from exc
-    if not isinstance(payload, dict):
-        raise build_error(
-            code="runtime_error",
-            reason="lark-cli 输出结构异常",
-            advice="检查当前命令的返回结构是否仍符合设计合同",
-            detail={"command": args, "ingest_kind": ingest_kind, "doc_type": doc_type},
-        )
-    return payload
 
 
 def _write_text_artifact(
@@ -199,7 +289,7 @@ def _pick_new_file(
         raise build_error(
             code="runtime_error",
             reason="下载或导出后没有找到可用主文件",
-            advice="检查 lark-cli 输出目录，确认主文件已成功落盘",
+            advice="检查 lark 输出目录，确认主文件已成功落盘",
             detail={
                 "directory": str(directory),
                 "allowed_suffixes": sorted(allowed_suffixes or []),
@@ -210,7 +300,7 @@ def _pick_new_file(
         raise build_error(
             code="runtime_error",
             reason="下载或导出后没有识别到新主文件",
-            advice="检查输出目录是否残留旧文件，或确认 lark-cli 本次确实生成了新文件",
+            advice="检查输出目录是否残留旧文件，或确认 lark 本次确实生成了新文件",
             detail={
                 "directory": str(directory),
                 "allowed_suffixes": sorted(allowed_suffixes or []),
@@ -264,10 +354,12 @@ def _convert_to_markdown(source_path: Path) -> str:
     return markdown
 
 
-def _fetch_cloud_docx(request: FeishuFetchRequest) -> FeishuFetchResult:
+def _fetch_cloud_docx(
+    request: FeishuFetchRequest, settings: FeishuFetchSettings
+) -> FeishuFetchResult:
     output_dir = _ensure_output_dir(request.output_dir)
-    args = [
-        "lark-cli",
+    c = _LARK_CLI
+    sub = [
         "docs",
         "+fetch",
         "--api-version",
@@ -283,12 +375,14 @@ def _fetch_cloud_docx(request: FeishuFetchRequest) -> FeishuFetchResult:
         "--document-id",
         request.document_id or "",
     ]
-    completed = _run_command(args, timeout_seconds=_timeout_for(request))
+    display = [c, *sub]
+    to = _timeout_for(request, settings)
+    completed = _run_lark_cli(settings, sub, timeout_seconds=to)
     stdout = _require_success(
-        completed, args=args, ingest_kind="cloud_docx", doc_type=None
+        completed, display_cmd=display, ingest_kind="cloud_docx", doc_type=None
     )
     payload = _parse_json(
-        stdout, args=args, ingest_kind="cloud_docx", doc_type=None
+        stdout, display_cmd=display, ingest_kind="cloud_docx", doc_type=None
     )
     document = (((payload.get("data") or {}).get("document")) or {})
     content = str(document.get("content") or "")
@@ -297,7 +391,7 @@ def _fetch_cloud_docx(request: FeishuFetchRequest) -> FeishuFetchResult:
             code="empty_content",
             reason="抓取成功但正文为空",
             advice="确认目标文档是否有正文内容，或改用人工核查该文档",
-            detail={"command": args, "ingest_kind": "cloud_docx"},
+            detail={"command": display, "ingest_kind": "cloud_docx"},
         )
     title = _title_for(request, str(document.get("title") or "").strip())
     artifact = _write_text_artifact(
@@ -313,14 +407,16 @@ def _fetch_cloud_docx(request: FeishuFetchRequest) -> FeishuFetchResult:
     )
 
 
-def _download_drive_file(request: FeishuFetchRequest, *, output_dir: Path) -> Path:
+def _download_drive_file(
+    request: FeishuFetchRequest, settings: FeishuFetchSettings, *, output_dir: Path
+) -> Path:
+    c = _LARK_CLI
     download_dir = output_dir / "_raw_download"
     download_dir.mkdir(parents=True, exist_ok=True)
     existing_files = {
         item.resolve() for item in _list_candidate_files(download_dir)
     }
-    args = [
-        "lark-cli",
+    sub = [
         "drive",
         "+download",
         "--file-token",
@@ -328,9 +424,11 @@ def _download_drive_file(request: FeishuFetchRequest, *, output_dir: Path) -> Pa
         "--output-dir",
         str(download_dir),
     ]
-    completed = _run_command(args, timeout_seconds=_timeout_for(request))
+    display = [c, *sub]
+    to = _timeout_for(request, settings)
+    completed = _run_lark_cli(settings, sub, timeout_seconds=to)
     _require_success(
-        completed, args=args, ingest_kind="drive_file", doc_type=request.doc_type
+        completed, display_cmd=display, ingest_kind="drive_file", doc_type=request.doc_type
     )
     return _pick_new_file(download_dir, existing_files=existing_files)
 
@@ -352,13 +450,17 @@ def _extract_task_id(payload: dict[str, Any]) -> str | None:
 
 
 def _poll_export_file_token(
-    *, task_id: str, request: FeishuFetchRequest, deadline: float
+    *,
+    task_id: str,
+    request: FeishuFetchRequest,
+    settings: FeishuFetchSettings,
+    deadline: float,
 ) -> str:
+    c = _LARK_CLI
     for _ in range(TASK_RESULT_POLLS):
         if time.monotonic() >= deadline:
             break
-        args = [
-            "lark-cli",
+        sub = [
             "drive",
             "+task_result",
             "--scenario",
@@ -366,14 +468,17 @@ def _poll_export_file_token(
             "--task-id",
             task_id,
         ]
-        completed = _run_command(
-            args, timeout_seconds=max(1.0, deadline - time.monotonic())
-        )
+        display = [c, *sub]
+        to = max(1.0, deadline - time.monotonic())
+        completed = _run_lark_cli(settings, sub, timeout_seconds=to)
         stdout = _require_success(
-            completed, args=args, ingest_kind="drive_file", doc_type=request.doc_type
+            completed,
+            display_cmd=display,
+            ingest_kind="drive_file",
+            doc_type=request.doc_type,
         )
         payload = _parse_json(
-            stdout, args=args, ingest_kind="drive_file", doc_type=request.doc_type
+            stdout, display_cmd=display, ingest_kind="drive_file", doc_type=request.doc_type
         )
         file_token = _extract_export_file_token(payload)
         if file_token:
@@ -391,11 +496,13 @@ def _poll_export_file_token(
     )
 
 
-def _export_drive_file(request: FeishuFetchRequest, *, output_dir: Path) -> Path:
+def _export_drive_file(
+    request: FeishuFetchRequest, settings: FeishuFetchSettings, *, output_dir: Path
+) -> Path:
+    c = _LARK_CLI
     export_format = EXPORT_FORMATS[request.doc_type or ""]
-    deadline = time.monotonic() + _timeout_for(request)
-    args = [
-        "lark-cli",
+    deadline = time.monotonic() + _timeout_for(request, settings)
+    sub = [
         "drive",
         "+export",
         "--file-token",
@@ -403,12 +510,14 @@ def _export_drive_file(request: FeishuFetchRequest, *, output_dir: Path) -> Path
         "--export-format",
         export_format,
     ]
-    completed = _run_command(args, timeout_seconds=_timeout_for(request))
+    display = [c, *sub]
+    to = _timeout_for(request, settings)
+    completed = _run_lark_cli(settings, sub, timeout_seconds=to)
     stdout = _require_success(
-        completed, args=args, ingest_kind="drive_file", doc_type=request.doc_type
+        completed, display_cmd=display, ingest_kind="drive_file", doc_type=request.doc_type
     )
     payload = _parse_json(
-        stdout, args=args, ingest_kind="drive_file", doc_type=request.doc_type
+        stdout, display_cmd=display, ingest_kind="drive_file", doc_type=request.doc_type
     )
     export_file_token = _extract_export_file_token(payload)
     if not export_file_token:
@@ -421,11 +530,14 @@ def _export_drive_file(request: FeishuFetchRequest, *, output_dir: Path) -> Path
                 detail={
                     "ingest_kind": "drive_file",
                     "doc_type": request.doc_type,
-                    "command": args,
+                    "command": display,
                 },
             )
         export_file_token = _poll_export_file_token(
-            task_id=task_id, request=request, deadline=deadline
+            task_id=task_id,
+            request=request,
+            settings=settings,
+            deadline=deadline,
         )
 
     download_dir = output_dir / "_raw_export"
@@ -436,8 +548,7 @@ def _export_drive_file(request: FeishuFetchRequest, *, output_dir: Path) -> Path
             download_dir, allowed_suffixes={f".{export_format}"}
         )
     }
-    download_args = [
-        "lark-cli",
+    dsub = [
         "drive",
         "+export-download",
         "--file-token",
@@ -445,12 +556,15 @@ def _export_drive_file(request: FeishuFetchRequest, *, output_dir: Path) -> Path
         "--output-dir",
         str(download_dir),
     ]
-    completed = _run_command(
-        download_args, timeout_seconds=max(1.0, deadline - time.monotonic())
+    ddisplay = [c, *dsub]
+    completed = _run_lark_cli(
+        settings,
+        dsub,
+        timeout_seconds=max(1.0, deadline - time.monotonic()),
     )
     _require_success(
         completed,
-        args=download_args,
+        display_cmd=ddisplay,
         ingest_kind="drive_file",
         doc_type=request.doc_type,
     )
@@ -497,25 +611,38 @@ def _finalize_drive_artifact(
     )
 
 
-def _fetch_drive_file(request: FeishuFetchRequest) -> FeishuFetchResult:
+def _fetch_drive_file(
+    request: FeishuFetchRequest, settings: FeishuFetchSettings
+) -> FeishuFetchResult:
     output_dir = _ensure_output_dir(request.output_dir)
     if request.doc_type == "file":
-        source_path = _download_drive_file(request, output_dir=output_dir)
+        source_path = _download_drive_file(
+            request, settings, output_dir=output_dir
+        )
     else:
-        source_path = _export_drive_file(request, output_dir=output_dir)
+        source_path = _export_drive_file(
+            request, settings, output_dir=output_dir
+        )
     return _finalize_drive_artifact(
         request, source_path=source_path, output_dir=output_dir
     )
 
 
-def fetch_feishu_content(request: FeishuFetchRequest) -> FeishuFetchResult:
-    timeout_seconds = _timeout_for(request)
-    _ensure_lark_cli_available(timeout_seconds=timeout_seconds)
+def fetch_feishu_content(
+    request: FeishuFetchRequest,
+    *,
+    env_file: Path | None = None,
+    environ: dict[str, str] | None = None,
+) -> FeishuFetchResult:
+    settings = load_feishu_fetch_settings(env_file=env_file, environ=environ)
+    timeout_seconds = _timeout_for(request, settings)
+    _ensure_lark_cli_available(settings, timeout_seconds=timeout_seconds)
+    _ensure_lark_config_matches_env(settings, timeout_seconds=timeout_seconds)
 
     if request.ingest_kind == "cloud_docx":
-        return _fetch_cloud_docx(request)
+        return _fetch_cloud_docx(request, settings)
     if request.ingest_kind == "drive_file":
-        return _fetch_drive_file(request)
+        return _fetch_drive_file(request, settings)
 
     raise FeishuFetchError(
         code="runtime_error",

@@ -16,3 +16,6 @@ test = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+  "l1_cloud: 真云 lark 集成，需显式环境变量 FEISHU_FETCH_L1_RUN=1 与凭证",
+]
