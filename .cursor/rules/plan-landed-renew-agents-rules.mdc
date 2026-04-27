@@ -16,7 +16,7 @@ alwaysApply: true
 - 实际注入到 **执行用 Cursor 工作区** 的，是以下模板（在工作区中即表现为 `AGENTS.md` 与 `rules/**`）：
   - `prompts/AGENTS.txt` → 工作区 `AGENTS.md`
   - `prompts/rules/**` → 工作区 `rules/`
-- 上述路径的 **renew 细则、与 docedit 的关系、`task_prompt` 等边界** 以 `renew-prompts.mdc` 为准；落地阶段须一并满足该规则。
+- renew 时须使 `prompts/AGENTS.txt`、`prompts/rules/**` 与根 `AGENTS.md`、当前实现及多 folder 输出契约一致；与 docedit、`task_prompt` 的边界以根 `AGENTS.md` 与相关 spec/plan 为准。
 
 ## 自检
 
