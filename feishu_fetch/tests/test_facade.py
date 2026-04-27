@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import write_root_dotenv
 from feishu_fetch import FeishuFetchError, FeishuFetchRequest, fetch_feishu_content
 
 
@@ -20,18 +21,30 @@ class FakeCompletedProcess:
         self.stderr = stderr
 
 
-def _mock_cli_path(args):
-    return Path(args[0]).name.lower() in {"lark-cli", "lark-cli.cmd", "lark-cli.exe"}
+def _which_lark(name: str | None) -> str | None:
+    if not name:
+        return None
+    base = Path(name).name.lower()
+    if base in {"lark-cli", "lark-cli.cmd", "lark-cli.exe"}:
+        return name
+    return None
 
 
 def test_cloud_docx_fetches_xml_and_writes_artifact(tmp_path, monkeypatch):
+    app_id = "cli_test"
+    env_file = write_root_dotenv(tmp_path, feishu_app_id=app_id)
     calls = []
 
     def fake_run(args, **kwargs):
-        calls.append(args)
-        if len(args) == 2 and _mock_cli_path(args) and args[1] == "--help":
+        calls.append((list(args), dict(kwargs)))
+        assert kwargs.get("cwd") == tmp_path.resolve()
+        if len(args) >= 2 and args[1] == "--help":
             return FakeCompletedProcess(stdout="usage")
-        if _mock_cli_path(args) and args[1:3] == ["docs", "+fetch"]:
+        if len(args) >= 3 and list(args[1:3]) == ["config", "show"]:
+            return FakeCompletedProcess(
+                stdout=json.dumps({"appId": app_id}, ensure_ascii=False)
+            )
+        if len(args) >= 3 and args[1:3] == ["docs", "+fetch"]:
             payload = {
                 "data": {
                     "document": {
@@ -43,7 +56,7 @@ def test_cloud_docx_fetches_xml_and_writes_artifact(tmp_path, monkeypatch):
             return FakeCompletedProcess(stdout=json.dumps(payload, ensure_ascii=False))
         raise AssertionError(args)
 
-    monkeypatch.setattr(shutil, "which", lambda name: name if name == "lark-cli" else None)
+    monkeypatch.setattr(shutil, "which", _which_lark)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     result = fetch_feishu_content(
@@ -52,7 +65,8 @@ def test_cloud_docx_fetches_xml_and_writes_artifact(tmp_path, monkeypatch):
             document_id="doccnxxxx",
             output_dir=tmp_path,
             title_hint="Weekly Sync",
-        )
+        ),
+        env_file=env_file,
     )
 
     artifact = Path(result.artifact_path)
@@ -60,7 +74,7 @@ def test_cloud_docx_fetches_xml_and_writes_artifact(tmp_path, monkeypatch):
     assert artifact.read_text(encoding="utf-8") == "<doc><p>Hello</p></doc>"
     assert result.ingest_kind == "cloud_docx"
     assert result.title == "Weekly Sync"
-    assert calls[1][1:] == [
+    assert calls[2][0][1:] == [
         "docs",
         "+fetch",
         "--api-version",
@@ -79,9 +93,12 @@ def test_cloud_docx_fetches_xml_and_writes_artifact(tmp_path, monkeypatch):
 
 
 def test_cloud_docx_wraps_missing_lark_cli(monkeypatch, tmp_path):
+    write_root_dotenv(tmp_path)
+
     def fake_run(*args, **kwargs):
         raise FileNotFoundError("lark-cli")
 
+    monkeypatch.setattr(shutil, "which", lambda _n: None)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     with pytest.raises(FeishuFetchError) as exc:
@@ -90,22 +107,64 @@ def test_cloud_docx_wraps_missing_lark_cli(monkeypatch, tmp_path):
                 ingest_kind="cloud_docx",
                 document_id="doccnxxxx",
                 output_dir=tmp_path,
-            )
+            ),
+            env_file=tmp_path / ".env",
         )
 
     assert exc.value.code == "dependency_error"
-    assert "找不到 lark-cli" in str(exc.value)
+    assert "PATH 上找不到命令" in str(exc.value)
+
+
+def test_cloud_docx_maps_stderr_permission_to_permission_error(monkeypatch, tmp_path):
+    app_id = "cli_p1"
+    write_root_dotenv(tmp_path, feishu_app_id=app_id)
+
+    def fake_run(args, **kwargs):
+        assert kwargs.get("cwd") == tmp_path.resolve()
+        if len(args) >= 2 and args[1] == "--help":
+            return FakeCompletedProcess(stdout="usage")
+        if len(args) >= 3 and list(args[1:3]) == ["config", "show"]:
+            return FakeCompletedProcess(
+                stdout=json.dumps({"appId": app_id}, ensure_ascii=False)
+            )
+        if len(args) >= 3 and args[1:3] == ["docs", "+fetch"]:
+            return FakeCompletedProcess(
+                returncode=2, stderr="403 forbidden: no permission to access this document"
+            )
+        raise AssertionError(args)
+
+    monkeypatch.setattr(shutil, "which", _which_lark)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(FeishuFetchError) as exc:
+        fetch_feishu_content(
+            FeishuFetchRequest(
+                ingest_kind="cloud_docx",
+                document_id="doccnxxxx",
+                output_dir=tmp_path,
+            ),
+            env_file=tmp_path / ".env",
+        )
+    assert exc.value.code == "permission_error"
 
 
 def test_cloud_docx_rejects_empty_content(monkeypatch, tmp_path):
+    app_id = "cli_empty"
+    write_root_dotenv(tmp_path, feishu_app_id=app_id)
+
     def fake_run(args, **kwargs):
-        if len(args) == 2 and _mock_cli_path(args) and args[1] == "--help":
+        assert kwargs.get("cwd") == tmp_path.resolve()
+        if len(args) >= 2 and args[1] == "--help":
             return FakeCompletedProcess(stdout="usage")
+        if len(args) >= 3 and list(args[1:3]) == ["config", "show"]:
+            return FakeCompletedProcess(
+                stdout=json.dumps({"appId": app_id}, ensure_ascii=False)
+            )
         return FakeCompletedProcess(
             stdout=json.dumps({"data": {"document": {"title": "Empty", "content": ""}}})
         )
 
-    monkeypatch.setattr(shutil, "which", lambda name: name if name == "lark-cli" else None)
+    monkeypatch.setattr(shutil, "which", _which_lark)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     with pytest.raises(FeishuFetchError) as exc:
@@ -114,7 +173,8 @@ def test_cloud_docx_rejects_empty_content(monkeypatch, tmp_path):
                 ingest_kind="cloud_docx",
                 document_id="doccnxxxx",
                 output_dir=tmp_path,
-            )
+            ),
+            env_file=tmp_path / ".env",
         )
 
     assert exc.value.code == "empty_content"
@@ -122,13 +182,20 @@ def test_cloud_docx_rejects_empty_content(monkeypatch, tmp_path):
 
 
 def test_drive_file_keeps_direct_readable_file_without_markitdown(tmp_path, monkeypatch):
+    app_id = "cli_df1"
+    write_root_dotenv(tmp_path, feishu_app_id=app_id)
     calls = []
 
     def fake_run(args, **kwargs):
         calls.append(args)
-        if len(args) == 2 and _mock_cli_path(args) and args[1] == "--help":
+        assert kwargs.get("cwd") == tmp_path.resolve()
+        if len(args) >= 2 and args[1] == "--help":
             return FakeCompletedProcess(stdout="usage")
-        if _mock_cli_path(args) and args[1:3] == ["drive", "+download"]:
+        if len(args) >= 3 and list(args[1:3]) == ["config", "show"]:
+            return FakeCompletedProcess(
+                stdout=json.dumps({"appId": app_id}, ensure_ascii=False)
+            )
+        if len(args) >= 3 and args[1:3] == ["drive", "+download"]:
             out_dir = Path(args[args.index("--output-dir") + 1])
             out_dir.mkdir(parents=True, exist_ok=True)
             (out_dir / "notes.md").write_text("# done\n", encoding="utf-8")
@@ -140,7 +207,7 @@ def test_drive_file_keeps_direct_readable_file_without_markitdown(tmp_path, monk
             raise AssertionError("markitdown should not be imported for .md")
         return importlib.import_module(name)
 
-    monkeypatch.setattr(shutil, "which", lambda name: name if name == "lark-cli" else None)
+    monkeypatch.setattr(shutil, "which", _which_lark)
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(importlib, "import_module", fail_import)
 
@@ -150,7 +217,8 @@ def test_drive_file_keeps_direct_readable_file_without_markitdown(tmp_path, monk
             file_token="filecnxxxx",
             doc_type="file",
             output_dir=tmp_path,
-        )
+        ),
+        env_file=tmp_path / ".env",
     )
 
     artifact = Path(result.artifact_path)
@@ -158,12 +226,14 @@ def test_drive_file_keeps_direct_readable_file_without_markitdown(tmp_path, monk
     assert artifact.suffix == ".md"
     assert artifact.read_text(encoding="utf-8") == "# done\n"
     assert result.ingest_kind == "drive_file"
-    assert calls[1][1:3] == ["drive", "+download"]
+    assert calls[2][1:3] == ["drive", "+download"]
 
 
 def test_drive_file_exports_docx_with_explicit_format_and_converts_to_markdown(
     tmp_path, monkeypatch
 ):
+    app_id = "cli_df2"
+    write_root_dotenv(tmp_path, feishu_app_id=app_id)
     calls = []
 
     class FakeMarkItDown:
@@ -173,22 +243,27 @@ def test_drive_file_exports_docx_with_explicit_format_and_converts_to_markdown(
 
     def fake_run(args, **kwargs):
         calls.append(args)
-        if len(args) == 2 and _mock_cli_path(args) and args[1] == "--help":
+        assert kwargs.get("cwd") == tmp_path.resolve()
+        if len(args) >= 2 and args[1] == "--help":
             return FakeCompletedProcess(stdout="usage")
-        if _mock_cli_path(args) and args[1:3] == ["drive", "+export"]:
+        if len(args) >= 3 and list(args[1:3]) == ["config", "show"]:
+            return FakeCompletedProcess(
+                stdout=json.dumps({"appId": app_id}, ensure_ascii=False)
+            )
+        if len(args) >= 3 and args[1:3] == ["drive", "+export"]:
             return FakeCompletedProcess(stdout=json.dumps({"data": {"task_id": "task_1"}}))
-        if _mock_cli_path(args) and args[1:3] == ["drive", "+task_result"]:
+        if len(args) >= 3 and args[1:3] == ["drive", "+task_result"]:
             return FakeCompletedProcess(
                 stdout=json.dumps({"data": {"file_token": "exported_1"}})
             )
-        if _mock_cli_path(args) and args[1:3] == ["drive", "+export-download"]:
+        if len(args) >= 3 and args[1:3] == ["drive", "+export-download"]:
             out_dir = Path(args[args.index("--output-dir") + 1])
             out_dir.mkdir(parents=True, exist_ok=True)
             (out_dir / "weekly.docx").write_bytes(b"docx-bytes")
             return FakeCompletedProcess(stdout="downloaded")
         raise AssertionError(args)
 
-    monkeypatch.setattr(shutil, "which", lambda name: name if name == "lark-cli" else None)
+    monkeypatch.setattr(shutil, "which", _which_lark)
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(time, "sleep", lambda *_: None)
     monkeypatch.setattr(
@@ -207,7 +282,8 @@ def test_drive_file_exports_docx_with_explicit_format_and_converts_to_markdown(
             output_dir=tmp_path,
             title_hint="Weekly Sync",
             timeout_seconds=5.0,
-        )
+        ),
+        env_file=tmp_path / ".env",
     )
 
     artifact = Path(result.artifact_path)
@@ -220,29 +296,37 @@ def test_drive_file_exports_docx_with_explicit_format_and_converts_to_markdown(
         "filecnxxxx",
         "--export-format",
         "docx",
-    ] == calls[1][1:7]
-    assert calls[2][1:5] == ["drive", "+task_result", "--scenario", "export"]
-    assert calls[3][1:3] == ["drive", "+export-download"]
+    ] == calls[2][1:7]
+    assert calls[3][1:5] == ["drive", "+task_result", "--scenario", "export"]
+    assert calls[4][1:3] == ["drive", "+export-download"]
 
 
 def test_drive_file_requires_markitdown_only_for_convertible_suffix(
     tmp_path, monkeypatch
 ):
+    app_id = "cli_df3"
+    write_root_dotenv(tmp_path, feishu_app_id=app_id)
+
     def fake_run(args, **kwargs):
-        if len(args) == 2 and _mock_cli_path(args) and args[1] == "--help":
+        assert kwargs.get("cwd") == tmp_path.resolve()
+        if len(args) >= 2 and args[1] == "--help":
             return FakeCompletedProcess(stdout="usage")
-        if _mock_cli_path(args) and args[1:3] == ["drive", "+export"]:
+        if len(args) >= 3 and list(args[1:3]) == ["config", "show"]:
+            return FakeCompletedProcess(
+                stdout=json.dumps({"appId": app_id}, ensure_ascii=False)
+            )
+        if len(args) >= 3 and args[1:3] == ["drive", "+export"]:
             return FakeCompletedProcess(
                 stdout=json.dumps({"data": {"file_token": "exported_1"}})
             )
-        if _mock_cli_path(args) and args[1:3] == ["drive", "+export-download"]:
+        if len(args) >= 3 and args[1:3] == ["drive", "+export-download"]:
             out_dir = Path(args[args.index("--output-dir") + 1])
             out_dir.mkdir(parents=True, exist_ok=True)
             (out_dir / "weekly.docx").write_bytes(b"docx-bytes")
             return FakeCompletedProcess(stdout="downloaded")
         raise AssertionError(args)
 
-    monkeypatch.setattr(shutil, "which", lambda name: name if name == "lark-cli" else None)
+    monkeypatch.setattr(shutil, "which", _which_lark)
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(
         importlib,
@@ -259,7 +343,8 @@ def test_drive_file_requires_markitdown_only_for_convertible_suffix(
                 file_token="filecnxxxx",
                 doc_type="doc",
                 output_dir=tmp_path,
-            )
+            ),
+            env_file=tmp_path / ".env",
         )
 
     assert exc.value.code == "dependency_error"
@@ -269,20 +354,31 @@ def test_drive_file_requires_markitdown_only_for_convertible_suffix(
 def test_drive_file_rejects_unsupported_suffix_and_runtime_failures(
     tmp_path, monkeypatch
 ):
+    app_id = "cli_df4"
+    write_root_dotenv(tmp_path, feishu_app_id=app_id)
     call_count = {"value": 0}
+    first_drive_download = {"done": False}
 
     def fake_run(args, **kwargs):
         call_count["value"] += 1
-        if len(args) == 2 and _mock_cli_path(args) and args[1] == "--help":
+        assert kwargs.get("cwd") == tmp_path.resolve()
+        if len(args) >= 2 and args[1] == "--help":
             return FakeCompletedProcess(stdout="usage")
-        if call_count["value"] == 2:
-            out_dir = Path(args[args.index("--output-dir") + 1])
-            out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / "binary.exe").write_bytes(b"boom")
-            return FakeCompletedProcess(stdout="downloaded")
+        if len(args) >= 3 and list(args[1:3]) == ["config", "show"]:
+            return FakeCompletedProcess(
+                stdout=json.dumps({"appId": app_id}, ensure_ascii=False)
+            )
+        if len(args) >= 3 and args[1:3] == ["drive", "+download"]:
+            if not first_drive_download["done"]:
+                first_drive_download["done"] = True
+                out_dir = Path(args[args.index("--output-dir") + 1])
+                out_dir.mkdir(parents=True, exist_ok=True)
+                (out_dir / "binary.exe").write_bytes(b"boom")
+                return FakeCompletedProcess(stdout="downloaded")
+            return FakeCompletedProcess(returncode=2, stderr="permission denied")
         return FakeCompletedProcess(returncode=2, stderr="permission denied")
 
-    monkeypatch.setattr(shutil, "which", lambda name: name if name == "lark-cli" else None)
+    monkeypatch.setattr(shutil, "which", _which_lark)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     with pytest.raises(FeishuFetchError) as unsupported:
@@ -292,29 +388,39 @@ def test_drive_file_rejects_unsupported_suffix_and_runtime_failures(
                 file_token="filecnxxxx",
                 doc_type="file",
                 output_dir=tmp_path,
-            )
+            ),
+            env_file=tmp_path / ".env",
         )
     assert unsupported.value.code == "request_error"
     assert "当前文件格式不在第一版支持范围内" in str(unsupported.value)
 
-    with pytest.raises(FeishuFetchError) as runtime_failed:
+    with pytest.raises(FeishuFetchError) as perm_failed:
         fetch_feishu_content(
             FeishuFetchRequest(
                 ingest_kind="drive_file",
                 file_token="filecnxxxx",
                 doc_type="file",
                 output_dir=tmp_path / "runtime",
-            )
+            ),
+            env_file=tmp_path / ".env",
         )
-    assert runtime_failed.value.code == "runtime_error"
-    assert "lark-cli 执行失败" in str(runtime_failed.value)
+    assert perm_failed.value.code == "permission_error"
+    assert "无权限" in str(perm_failed.value) or "权限" in str(perm_failed.value)
 
 
 def test_drive_file_rejects_ambiguous_new_files_after_download(tmp_path, monkeypatch):
+    app_id = "cli_df5"
+    write_root_dotenv(tmp_path, feishu_app_id=app_id)
+
     def fake_run(args, **kwargs):
-        if len(args) == 2 and _mock_cli_path(args) and args[1] == "--help":
+        assert kwargs.get("cwd") == tmp_path.resolve()
+        if len(args) >= 2 and args[1] == "--help":
             return FakeCompletedProcess(stdout="usage")
-        if _mock_cli_path(args) and args[1:3] == ["drive", "+download"]:
+        if len(args) >= 3 and list(args[1:3]) == ["config", "show"]:
+            return FakeCompletedProcess(
+                stdout=json.dumps({"appId": app_id}, ensure_ascii=False)
+            )
+        if len(args) >= 3 and args[1:3] == ["drive", "+download"]:
             out_dir = Path(args[args.index("--output-dir") + 1])
             out_dir.mkdir(parents=True, exist_ok=True)
             (out_dir / "notes.md").write_text("# done\n", encoding="utf-8")
@@ -322,7 +428,7 @@ def test_drive_file_rejects_ambiguous_new_files_after_download(tmp_path, monkeyp
             return FakeCompletedProcess(stdout="downloaded")
         raise AssertionError(args)
 
-    monkeypatch.setattr(shutil, "which", lambda name: name if name == "lark-cli" else None)
+    monkeypatch.setattr(shutil, "which", _which_lark)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     with pytest.raises(FeishuFetchError) as exc:
@@ -332,7 +438,8 @@ def test_drive_file_rejects_ambiguous_new_files_after_download(tmp_path, monkeyp
                 file_token="filecnxxxx",
                 doc_type="file",
                 output_dir=tmp_path,
-            )
+            ),
+            env_file=tmp_path / ".env",
         )
 
     assert exc.value.code == "runtime_error"
@@ -342,6 +449,10 @@ def test_drive_file_rejects_ambiguous_new_files_after_download(tmp_path, monkeyp
 def test_cloud_docx_runs_against_local_mock_lark_cli(tmp_path, monkeypatch):
     fixture = Path(__file__).parent / "fixtures" / "mock_lark_cli.py"
     assert fixture.exists()
+    app_id = "cli_mock_fixture"
+    root = tmp_path
+    write_root_dotenv(root, feishu_app_id=app_id)
+    monkeypatch.setenv("MOCK_LARK_CONFIG_APP_ID", app_id)
 
     shim_dir = tmp_path / "bin"
     shim_dir.mkdir(parents=True, exist_ok=True)
@@ -361,7 +472,8 @@ def test_cloud_docx_runs_against_local_mock_lark_cli(tmp_path, monkeypatch):
             document_id="doccn_local_mock",
             output_dir=tmp_path / "outputs",
             title_hint="Local Mock",
-        )
+        ),
+        env_file=root / ".env",
     )
 
     artifact = Path(result.artifact_path)
@@ -375,7 +487,8 @@ def test_cloud_docx_runs_against_local_mock_lark_cli(tmp_path, monkeypatch):
         if line.strip()
     ]
     assert log_entries[0]["args"] == ["--help"]
-    assert log_entries[1]["args"] == [
+    assert log_entries[1]["args"] == ["config", "show"]
+    assert log_entries[2]["args"] == [
         "docs",
         "+fetch",
         "--api-version",

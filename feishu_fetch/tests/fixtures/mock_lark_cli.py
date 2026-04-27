@@ -30,6 +30,13 @@ def _main() -> int:
         sys.stdout.write("mock lark-cli help\n")
         return 0
 
+    if args == ["config", "show"]:
+        app_id = os.environ.get("MOCK_LARK_CONFIG_APP_ID", "cli_mock_fixture")
+        sys.stdout.write(
+            json.dumps({"appId": app_id, "brand": "Mock"}, ensure_ascii=False)
+        )
+        return 0
+
     if len(args) >= 3 and args[0] == "docs" and args[1] == "+fetch":
         try:
             document_id = args[args.index("--document-id") + 1]

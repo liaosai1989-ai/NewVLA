@@ -1,0 +1,27 @@
+---
+description: 临时 worktree：`.worktrees/<name>/` 须排除仓库级代理约束，禁止拷贝 `.trae/` 与 `AGENTS.md`
+globs: **/.worktrees/**
+alwaysApply: false
+---
+
+# 临时 Worktree 规则
+
+创建分支并生成临时 `.worktrees/<name>/` 目录时，必须排除以下仓库级代理约束文件：
+
+- `.trae/`
+- `AGENTS.md`
+
+## 硬性要求
+
+- 临时 `.worktrees` 目录只用于开发隔离，不等于真实运行时工作区
+- 不允许把仓库根目录下的 `.trae` 复制到临时 `.worktrees` 目录
+- 不允许把仓库根目录下的 `AGENTS.md` 复制到临时 `.worktrees` 目录
+- 如需运行时规则，应由真实工作区初始化流程按模板资产显式注入，而不是从维护仓库直接拷贝仓库级约束
+
+## 允许保留的内容
+
+- 源码
+- `prompts/`
+- `docs/`
+- 配置样例
+- 其他开发所需文件

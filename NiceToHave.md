@@ -50,7 +50,8 @@
 | NTH-003 | RQ 并发多个 Cursor CLI 的设计与实现优化 | P1 | 待评估 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-webhook-cursor-executor-design.md` | - | 当前 spec 已覆盖基础并发语义，后续需单独优化稳定性与实现细节 |
 | NTH-004 | 根目录 .env 与各模块配置消费合同收口 | P1 | 已出 spec | 2026-04-26 | `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | - | 已明确各模块直接消费根 `.env` 各自分组，LLM 不注入基础设施配置，legacy Feishu 维持兼容保留 |
 | NTH-005 | 飞书文件夹-Dify 知识库-QA 合同一对一映射收口 | P1 | 已出 spec | 2026-04-26 | `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | - | 已明确 `folder_token` 必须一对一命中 `dify_target_key`、`dataset_id` 与 `qa_rule_file`，Agent 不负责推断 |
-| NTH-006 | 飞书 App 文件夹创建与权限初始化工具 | P1 | 待评估 | 2026-04-26 | - | - | 需要辅助工具基于飞书 OpenAPI 和 App ID 自动创建 App 文件夹、设为企业内可见，并把 folder token 回写 `.env` |
+| NTH-006 | 飞书 App 文件夹创建与权限初始化工具 | P1 | 已实现 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md` | `docs/superpowers/plans/2026-04-27-feishu-app-folder-onboard-implementation-plan.md` | 根目录 `onboard/` 已提供 `feishu-onboard` 包与单测、README，按 spec/plan 两阶段写根 `.env` 与 lark 初始化，详见正文 |
+| NTH-007 | 管线执行工作区物理目录初始化（与入轨解耦） | P2 | 待评估 | 2026-04-27 | - | - | 与 NTH-006 互补：`feishu-onboard` 不创建独立生产 Cursor 工作区目录，仅操作仓根 `.env` 与本机 lark；若部署需要物理分离的执行目录，应另立 spec/plan 或接现有初始化链 |
 
 ## 正文记录
 
@@ -268,7 +269,7 @@
 ## NTH-006 飞书 App 文件夹创建与权限初始化工具
 
 - 提出时间：2026-04-26
-- 当前状态：待评估
+- 当前状态：已实现
 - 优先级：P1
 - 背景/问题：
   - 按飞书规则，本仓库业务链路使用的目标文件夹必须是 App 文件夹，不能直接使用用户个人文件夹。
@@ -290,19 +291,52 @@
 - spec 索引：
   - `docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md`
 - plan 索引：
-  - -
+  - `docs/superpowers/plans/2026-04-27-feishu-app-folder-onboard-implementation-plan.md`
 - 备注：
   - 本条是初始化辅助工具，不改变现有 `webhook` 与 Agent 的主链路边界。
   - 重点是把“App 文件夹约束”和“token 回写配置”收口成可执行工具，而不是靠人工步骤维持。
+  - 2026-04-27：已按 plan 在仓库根 `onboard/` 落地可编辑安装的 Python 包 `feishu-onboard`（入口 `feishu-onboard`），含校验、两阶段根 `.env` 原子写、飞书 token/建夹/公开权限、`lark-cli config init` 与 `show` 校验、编排与交互 CLI；`pytest` 覆盖核心路径；操作说明见 `onboard/README.md`；与 webhook 接根 `.env` 路由属并行后续工作，不在 NTH-006 本条目范围内。
 
 ### 方案草案
 
-- 方案一：提供一个单独 CLI，输入 App ID 和目标文件夹信息，完成创建、设权限、输出并回写 `folder_token`。
-- 方案二：把该能力做成仓库内初始化脚本，和现有 `.env` 管理流程一起使用，但不耦合到运行时 webhook。
-- 方案三：先做最小闭环，只支持创建单个 App 文件夹和回写指定配置项，后续再扩展批量初始化能力。
+- 已采纳 plan：独立子包于 `onboard/`，不并入 webhook 运行时；按 spec 两阶段写（阶段 A 业务分组、阶段 B `FEISHU_FOLDER_ROUTE_KEYS` 门禁于 public + lark 均成功之后）。
+- 原方案一/二/三中的方向已收敛为当前包形态；批量初始化、自 `webhook` 派生 `folder_routes.example.json` 等仍为 plan 声明的非本条目必达项。
 
 ### 验收标准
 
 - 能通过飞书 OpenAPI 基于 App 身份创建出可用于本仓库的 App 文件夹。
-- 创建后能自动把文件夹设置为企业内部可见，避免继续依赖人工补权限。
-- 工具能拿到正确的 `folder_token` 并稳定回写到根 `.env` 指定配置项。
+- 创建后能自动把文件夹设置为企业内部可见，避免继续依赖人工补权限（失败时按 spec 进入部分完成态，不写索引）。
+- 工具能拿到正确的 `folder_token` 并稳定回写到根 `.env` 指定配置项（与 spec §5 键名一致，含两阶段与续跑/冲突语义，以实现与 `onboard` 内单测为准）。
+
+## NTH-007 管线执行工作区物理目录初始化（与入轨解耦）
+
+- 提出时间：2026-04-27
+- 当前状态：待评估
+- 优先级：P2
+- 背景/问题：
+  - `feishu-onboard`（NTH-006）成功路径为：飞书 App 夹、两阶段写**仓库根** `.env`、在**同一仓根**执行 `lark-cli config init`。
+  - 它不生成「单独一套用于 RQ / webhook 触发生产任务的 Cursor 工作区」目录树；维护仓在 `AGENTS.md` 中亦与「已生成的业务执行工作区」区分。
+  - 若运维期望「入轨=顺带落一个物理生产工作区（拷 `prompts`→`AGENTS`、物化 `rules` 等）」，当前工具不包含该步，易与职责边界产生误解。
+- 目标：
+  - 明确入轨与「执行工作区」初始化是否拆分；若需要，用独立 spec/plan 定义目录结构、与根 `.env` 的关系、谁负责拷贝/物化模板。
+  - 可选：CLI 子命令、安装脚本或部署流水线节点，在指定路径搭好执行区但不重复 NTH-006 已有能力。
+- 预期收益：
+  - 减少「以为 onboard 会建工作区」的配置事故。
+  - 需要物理隔离时有一致、可复现的搭盘方式。
+- 影响范围：
+  - 与 `onboard/`、工作区模板 `prompts/**`、未来执行器/部署文档的边界说明
+- spec 索引：-
+- plan 索引：-
+- 备注：
+  - 不反向要求改动已落地的 NTH-006 行为，除非经评审后合并需求。
+
+### 方案草案
+
+- 方案一：仅文档在 README / 操作手册中强化「不建工作区」一句，不新增实现。
+- 方案二：独立小工具或 `feishu-onboard workspace init <path>`，从模板生成目录并提示与根 `.env` 同机/同盘约束。
+- 方案三：生产工作区全由现有外部编排（镜像、CI、RQ 机）完成，本仓只维护模板资产。
+
+### 验收标准
+
+- 能向操作者说清：入轨成功 ≠ 已创建独立生产工作区目录；若需要后者，有明确入口或文档步骤。
+- 若实现方案二，有最小验收（目录结构、`AGENTS`/`rules` 来源、不泄露密钥）。

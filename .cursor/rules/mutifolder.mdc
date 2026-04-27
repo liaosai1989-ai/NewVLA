@@ -1,4 +1,9 @@
-## 多 Folder 规则
+---
+description: 多飞书 folder 与单管线工作区映射：folder_token、QA 规则、多 Dify 实例（API/key/dataset_id）、task_context 与 Agent 顺序
+alwaysApply: true
+---
+
+# 多 Folder 规则
 
 - 系统只维护一个统一的管线工作区。
 - 不再按飞书 `folder` 切分不同 `workspace`。

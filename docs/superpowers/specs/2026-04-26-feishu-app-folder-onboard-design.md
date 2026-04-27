@@ -1,8 +1,17 @@
 # Feishu App Folder Onboard Design
 
+## 修订说明
+
+- **2026-04-27**：`qa_rule_file` 路径合同扩展——除 `rules/...` 外，允许维护仓库内已存在的 `prompts/rules/...`（不强制为入轨再复制到 `rules/`）；真源仍存于根 `.env`。执行管线任务的**工作区**侧仍须通过初始化将模板物化到 `rules/` 或由任务层与路径约定对齐（见 §4.1、§5.3）。以下正文为现行有效表述。
+- **2026-04-27（现网入轨与 §6.2/§7.3 文字关系；验收未闭环）**：目标管线里 `onboard` 的**可自动化**「先让合适的人在飞书侧能改分享」已按联调收束为：根 `.env` 必配 `FEISHU_ONBOARD_FOLDER_DELEGATE_OPEN_ID` 等，并仅使用 **云空间文件夹协作者** 接口 `POST .../members?type=folder`；**不**在实现中调用 §6.2 所举的 `PATCH .../public` 链式能力作为入轨主路径。正文里「企业内可见」「基础/权限初始化」「`tenant_readable` + `PATCH .../public`」等句为**成稿/产品语义与历史接口索引**，**不删不改原段**；与现网 `onboard` 不一致时，以本修订说明、[`onboard/README.md`](../../../onboard/README.md) 与代码为准。委托人在**客户端**把分享改到组织内/全员，仍属人侧步骤。与 NTH-006 的 P1/§7.3/阶段 B 门禁的**可验收表述**在验收闭环后再合并进正文（本修订在验收完成前不视为对 §6.2 的「替换落地」）。
+
+---
+
 ## 1. 背景与目标
 
 本设计对应 `NTH-006 飞书 App 文件夹创建与权限初始化工具`。
+
+**与 NTH-006 的优先级对齐（避免验收争议）**：NTH 文案中的「企业内部可见」在本设计中按 **P1 尽力项** 处理——成功则与创建、`lark-cli` 一并作为「可进索引」前提；失败则进入 §7.3 部分完成态（映射可落盘，**不得**写入 `FEISHU_FOLDER_ROUTE_KEYS`），不回滚已创建文件夹。若产品将「企业内可见」升格为 **P0 门禁**，须改 §7.3：权限失败时 **禁止** 写入业务映射或须与「不入索引」策略一致，并同步修订 NTH-006 表述。
 
 当前仓库已经明确：
 
@@ -34,6 +43,7 @@
 
 本设计确认以下硬约束：
 
+- **`onboard` 执行不变量**：单次运行中，**根 `.env` 所在目录**与 `onboard` 用于解析 `qa_rule_file` 的**仓库根**须一致；与后续 `feishu_fetch` / Agent 所消费的 **执行工作区根** 须为同一物理目录（或文档化且实现可验证的等价路径映射）。`qa_rule_file` 可为仓库根下已存在的 `rules/...` **或** `prompts/rules/...` 相对路径；**不得**在目标路径不存在时通过校验。维护本仓库、仅具 `prompts/rules/` 模板时，**可直接**将 `prompts/rules/...` 写入真源，无需为入轨再复制到顶层 `rules/`；执行工作区仍须在初始化时物化到 `rules/` 供任务读取（见 §4.1、§5.3）。
 - 所有真源都来自仓库根 `.env`
 - 真源既包括静态基础设施配置，也包括 `folder_token` 对应的业务映射
 - `folder_token -> dify_target_key + dataset_id + qa_rule_file` 的真源必须落在根 `.env`
@@ -87,7 +97,7 @@
 - 把 `folder_token` 与业务映射写入根 `.env`
 - 在当前工作区执行一次 bot-only 口径的 `lark-cli` 初始化
 - 为 `webhook` 后续直接解析根 `.env` 提供稳定合同
-- 允许生成 `webhook/config/folder_routes.example.json` 作为派生示例产物
+- **可选**：生成 `webhook/config/folder_routes.example.json` 作为由根 `.env` 导出的派生示例（**第一版不强制**；未实现导出不影响本轮验收，见 §9）
 
 ### 3.2 本轮非目标
 
@@ -111,6 +121,8 @@
 - `qa_rule_file`
 - 可选的父文件夹 token
 
+**运行前准备（与 §5.3 一致）**：`qa_rule_file` 必须指向**与根 `.env` 同一仓库根**下、**已存在**的相对路径文件。允许的两种前缀：`rules/...`（执行工作区物化后的规则）或 `prompts/rules/...`（本维护仓库内模板，**不**要求为入轨再复制到 `rules/`）。禁止绝对路径与 `..` 跳目录。若执行工作区与维护仓**不同步**，初始化管线工作区时须从 `prompts/rules/` 分发到 `rules/`，或保证任务侧能解析真源中路径与本地文件一致。
+
 原因：
 
 - 这些字段属于业务绑定关系
@@ -123,7 +135,7 @@
 - 从根 `.env` 读取 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 等静态配置
 - 校验 `route_key` 与 `dify_target_key` 是否满足环境变量命名约束
 - 校验 `dify_target_key` 是否能命中完整的 `DIFY_TARGET_<KEY>_*` 配置组
-- 校验 `qa_rule_file` 是否满足运行时路径合同
+- 校验 `qa_rule_file` 是否满足 `rules/` 或 `prompts/rules/` 路径合同
 - 获取 `tenant_access_token`
 - 调飞书创建文件夹
 - 读取返回的 `folder_token` 与 `url`
@@ -188,14 +200,14 @@ FEISHU_FOLDER_ROUTE_KEYS=TEAM_A,TEAM_B
 
 对 `QA_RULE_FILE` 的硬约束：
 
-- 必须是相对路径
-- 必须位于运行时工作区 `rules/` 目录下
+- 必须是相对路径（以仓库根为基准解析）
+- 必须以 `rules/` **或** `prompts/rules/` 开头（禁止其它前缀，避免随意指向仓外路径）
 - 禁止绝对路径
 - 禁止包含 `..` 跳目录
-- 根 `.env` 中保存的是运行时路径，例如 `rules/qa/folders/team_a.mdc`
-- 不把 `prompts/rules/...` 这类模板资产路径直接写入业务映射真源
-- `onboard` 写入前必须确认该相对路径文件已存在于当前运行时工作区
+- 根 `.env` 中保存的即是上述相对路径，例如 `rules/qa/folders/team_a.mdc` 或 `prompts/rules/qa/folders/team_a.mdc`
+- `onboard` 写入前必须确认该相对路径在**当前仓库根**下对应文件**已存在**
 - 若目标文件不存在，则直接失败，不允许只校验路径格式后写入真源
+- **执行工作区**内 Agent 仍以 `rules/` 下物化结果为主要消费形态时，由工作区初始化将 `prompts/rules/` 模板分发为 `rules/...`，与 `prompts/AGENTS.txt` 等「拷入工作区」约定一致；真源中保留 `prompts/rules/...` 时，任务编排须保证路径与文件可对上（或同构维护整仓）
 
 ### 5.4 `.env` 初始化模板示例
 
@@ -265,42 +277,67 @@ FEISHU_FOLDER_TEAM_B_QA_RULE_FILE=rules/qa/folders/team_b.mdc
 - `route_key` 格式合法
 - `dify_target_key` 格式合法
 - 根 `.env` 中存在完整的 `DIFY_TARGET_<KEY>_*` 静态配置组
-- `qa_rule_file` 满足 `rules/` 相对路径合同
-- 当前运行时工作区中存在 `qa_rule_file` 指向的实际文件
+- `qa_rule_file` 满足 `rules/` 或 `prompts/rules/` 相对路径合同
+- 当前仓库根下存在 `qa_rule_file` 指向的实际文件
 - `route_key` 不与已有 route 冲突
+- **`parent_folder_token` 非空时**：格式与长度符合与 `folder_token` 同类的约定（如禁止异常字符、过长输入）；**不**将飞书原始错误响应体原样打印到终端（见 §7.1）
+
+### 6.1b 续跑与幂等
+
+- **禁止**在「同一 `route_key` 已存在 `FEISHU_FOLDER_<KEY>_TOKEN`」且非显式「强制新建」时再次调用创建文件夹接口，以免产生孤儿云文件夹。
+- 续跑语义须覆盖：仅补企业内可见、仅补 `lark-cli`、仅在两条件满足后补写 `FEISHU_FOLDER_ROUTE_KEYS` 等分支；实现可采用显式子命令或交互选项（如 `--force-new-folder`）区分「新建」与「续跑」。
+- **部分激活态（双轨）**：允许 `.env` 中已存在完整 `FEISHU_FOLDER_<KEY>_*` 分组，但 `FEISHU_FOLDER_ROUTE_KEYS` **尚未**包含该 `route_key`。消费方 **不得** 仅凭存在 `FEISHU_FOLDER_<KEY>_TOKEN` 即视为路由已上线；`webhook` 仅以索引 + 分组为准（§8）。可选：`onboard` 或运维自检列出「已写映射、未入索引」的 key。
 
 只有当这些输入都收集完成并通过本地校验后，才允许进入后续自动动作：
 
 - 创建飞书 App 文件夹
-- 写回根 `.env`
-- 初始化当前工作区中的 `lark-cli`
+- **阶段 A**：写回根 `.env` 中本 route 分组字段（见 §6.3，**不含** `FEISHU_FOLDER_ROUTE_KEYS`）
+- 尝试企业内可见权限初始化；初始化当前工作区中的 `lark-cli`；**阶段 B**（索引追加）仅当二者均成功（见 §6.3、§7）
 
 ### 6.2 飞书侧调用
 
-最小调用链路：
+文档用语「App 文件夹」指：**由当前飞书应用、在云空间下通过开放平台「新建文件夹」能力创建的文件夹**，与官方文档中的 **create_folder** 一致；**不**指未公开的独立 API 名称。
 
-1. 使用 App 身份获取 `tenant_access_token`
-2. 调用创建文件夹接口
-3. 记录返回的 `folder_token` 与 `url`
-4. 尝试调用文件夹公开权限接口，把链接可见性设为企业内
+**创建文件夹（须写死实现合同）**
+
+1. 使用应用凭证获取 **`tenant_access_token`**（`Authorization: Bearer <tenant_access_token>`）。
+2. 调用 **`POST https://open.feishu.cn/open-apis/drive/v1/files/create_folder`**（以开放平台当前文档为准），在父级为云空间根时父目录 `folder_token` 使用 **`""`** 空串等官方约定。
+3. 实现须在 spec/实现说明中摘录或链接官方文档中的 **限流、日配额、不可并发创建、典型错误码**（如 `1061045`、`1062507` 等，以官方为准）供重试与排障使用。
+
+**企业内可见（链接分享）**
+
+4. 创建成功后，尝试将资源对企业内可读：调用开放平台 **更新云文档权限设置 / 公开权限** 类接口（如 **`PATCH .../open-apis/drive/v1/permissions/:token/public`**，具体路径与版本以官方为准），查询参数 **`type`** 须与资源类型一致（云空间文件夹/文件场景下按官方枚举选择，如 `file`，**选错会导致稳定 4xx/业务错误码**）。请求体将链接可见性设为 **`tenant_readable`**（或团队约定的 `tenant_editable`，须全文统一）。若企业策略禁止外链或返回如 `1063003` 等码，归入 §7.3 并输出补救说明。
+
+**说明**：全文 API 路径、错误码以 [飞书开放平台](https://open.feishu.cn) 当前文档为准；实现变更时同步更新本节与验收中的可验证描述。
 
 ### 6.3 本地写入
 
-创建成功后，把以下内容写入根 `.env`：
+**两阶段写入（避免 §6.4 与索引追加顺序被误读为循环依赖）**
 
-- 写入 `FEISHU_FOLDER_<KEY>_NAME`
-- 写入 `FEISHU_FOLDER_<KEY>_TOKEN`
-- 写入 `FEISHU_FOLDER_<KEY>_DIFY_TARGET_KEY`
-- 写入 `FEISHU_FOLDER_<KEY>_DATASET_ID`
-- 写入 `FEISHU_FOLDER_<KEY>_QA_RULE_FILE`
-- 仅当本次 `onboard` 的权限初始化与当前工作区 `lark-cli` 初始化都完成后，才允许把 `route_key` 追加到 `FEISHU_FOLDER_ROUTE_KEYS`
+**阶段 A — 路由分组真源（不含索引）**
 
-写入规则：
+**推荐顺序**：创建文件夹成功并取得 `folder_token` / `url` → **阶段 A** 持久化分组字段 → 再执行 §6.2 的公开权限设置 → 再 §6.4 `lark-cli` → 条件满足后 **阶段 B**。阶段 A 须在 `lark-cli` 之前完成，以便 §6.4 前置条件成立。
+
+飞书创建成功并取得 `folder_token` / `url` 后，**第一次**将以下键写入根 `.env`（**不**修改 `FEISHU_FOLDER_ROUTE_KEYS`）：
+
+- `FEISHU_FOLDER_<KEY>_NAME`
+- `FEISHU_FOLDER_<KEY>_TOKEN`
+- `FEISHU_FOLDER_<KEY>_DIFY_TARGET_KEY`
+- `FEISHU_FOLDER_<KEY>_DATASET_ID`
+- `FEISHU_FOLDER_<KEY>_QA_RULE_FILE`
+
+下文及 §6.4 所称 **「本次 route 分组真源写入完成」** 仅指阶段 A，**不包含** 向 `FEISHU_FOLDER_ROUTE_KEYS` 追加 `route_key`。
+
+**阶段 B — 索引追加**
+
+仅当 **企业内可见权限初始化成功**（非 §7.3 失败态）且 **当前工作区 `lark-cli` 初始化成功** 后，**第二次**原子更新根 `.env`，将本次 `route_key` 追加到 `FEISHU_FOLDER_ROUTE_KEYS`（与已有键去重、格式合法）。§7.3 / §7.4 部分完成态下 **不得** 执行阶段 B。
+
+**写入规则（两阶段均适用）**
 
 - 保留未知配置行与注释
 - 已存在同名键时做原位更新，不制造重复键
-- 先写临时文件，再原子替换原 `.env`
-- 文本编码固定为 UTF-8
+- 每一阶段均：**在与目标 `.env` 同目录、同卷**下创建临时文件，写入后 **`os.replace` 类原子替换**（避免跨卷 `TEMP` 导致非原子）；文本编码固定为 **UTF-8**（与仓库 PowerShell 写文件约定一致）
+- 临时文件权限：**用户独占**（Unix 语义 `0600`；Windows 实现须保证仅当前用户可读写），降低多用户主机上的草稿泄露面
 
 ### 6.4 `lark-cli` 初始化
 
@@ -309,7 +346,7 @@ FEISHU_FOLDER_TEAM_B_QA_RULE_FILE=rules/qa/folders/team_b.mdc
 - 操作者已完成本次 `onboard` 所需全部输入
 - 本地输入校验已通过
 - 飞书 App 文件夹已创建成功
-- 根 `.env` 已完成本次 route 真源写入
+- 根 `.env` 已完成 **§6.3 阶段 A**（路由分组真源，**不含** `FEISHU_FOLDER_ROUTE_KEYS` 追加）
 
 初始化动作：
 
@@ -317,9 +354,9 @@ FEISHU_FOLDER_TEAM_B_QA_RULE_FILE=rules/qa/folders/team_b.mdc
 2. 从根 `.env` 读取 `FEISHU_APP_SECRET`
 3. 在当前工作区执行 `lark-cli config init --app-id <FEISHU_APP_ID> --app-secret-stdin`
 4. 仅通过标准输入传入 `FEISHU_APP_SECRET`，不通过命令行参数明文拼接 secret
-5. 紧接着执行 `lark-cli config show`
-6. 校验输出中的 `appId` 与根 `.env` 中的 `FEISHU_APP_ID` 一致
-7. 只有校验通过后，才视为当前执行环境已配置成 bot-only 可抓取状态
+5. 紧接着执行 `lark-cli config show`（或文档规定的等价校验命令）
+6. **仅**从输出中比对 **`appId`**（及明确列出的非敏感字段）；**禁止**依赖或展示含 `app_secret` 的完整配置转储；若 `show` 会打印 secret，实现须改用过滤输出或官方支持的仅元数据子命令
+7. 校验 `appId` 与根 `.env` 中 `FEISHU_APP_ID` 一致后，才视为当前执行环境已配置成 bot-only 可抓取状态；随后若权限与 CLI 均成功，执行 **§6.3 阶段 B**
 
 约束：
 
@@ -344,7 +381,13 @@ FEISHU_FOLDER_TEAM_B_QA_RULE_FILE=rules/qa/folders/team_b.mdc
 
 ## 7. 冲突检测与错误处理
 
-### 7.1 直接失败
+### 7.1 错误与日志策略（脱敏）
+
+- **禁止**在标准输出、标准错误或未文档化的日志中输出：`FEISHU_APP_SECRET`、`tenant_access_token`、`DIFY_*_API_KEY`、完整 HTTP 响应体、或其它可还原凭据的片段。
+- 用户可见信息：稳定错误码（或内部代号）+ 简短中文说明；需深度排障时，可写入**本地受控**调试文件（可选）并在运维文档中说明，**不**默认回显原始 API 体。
+- **`folder_token` / 可访问 URL**：交互式本地终端可完整输出（与 §7.3、§7.4 补救输出一致）；CI、远程执行或日志采集场景宜写入**权限受限**工件文件或对 token/url **掩码**；文档须提示避免在录屏会议中展示完整值。
+
+### 7.2 直接失败
 
 以下情况直接失败，且不写入 `.env`：
 
@@ -353,13 +396,13 @@ FEISHU_FOLDER_TEAM_B_QA_RULE_FILE=rules/qa/folders/team_b.mdc
 - `route_key` 格式非法
 - `dify_target_key` 格式非法
 - 根 `.env` 中不存在完整的 `DIFY_TARGET_<KEY>_*` 配置组
-- `qa_rule_file` 不满足 `rules/` 相对路径合同
-- 当前运行时工作区中不存在 `qa_rule_file` 指向的实际文件
+- `qa_rule_file` 不满足 `rules/` 或 `prompts/rules/` 相对路径合同
+- 当前仓库根下不存在 `qa_rule_file` 指向的实际文件
 - 飞书创建文件夹失败
 - `route_key` 已存在且对应配置与本次输入冲突
 - 已存在其他 route 使用同一个 `folder_token`
 
-### 7.2 权限初始化失败
+### 7.3 权限初始化失败
 
 以下情况按“创建成功但权限初始化未完成”处理：
 
@@ -380,7 +423,7 @@ FEISHU_FOLDER_TEAM_B_QA_RULE_FILE=rules/qa/folders/team_b.mdc
 - 只要文件夹已成功创建，且后续目标能被当前同一个飞书应用 bot 访问，业务映射仍可视为有效
 - 权限初始化失败不应回退已经成功的 folder 创建结果
 
-### 7.3 `lark-cli` 初始化失败
+### 7.4 `lark-cli` 初始化失败
 
 以下情况按“route 已创建，但当前工作区抓取初始化未完成”处理：
 
@@ -395,6 +438,7 @@ FEISHU_FOLDER_TEAM_B_QA_RULE_FILE=rules/qa/folders/team_b.mdc
 - 不允许把 `route_key` 写入 `FEISHU_FOLDER_ROUTE_KEYS`
 - 终端输出必须明确标记“当前工作区的 lark-cli 初始化未完成”
 - 必须输出后续补救动作，例如单独补做 `lark-cli config init --app-id <FEISHU_APP_ID> --app-secret-stdin`，并再次通过 `lark-cli config show` 校验
+- **建议**与 §7.3 对称：若已知，一并输出当前 `folder_token` 与文件夹 `url`，便于排障（输出方式仍受 §7.1 场景约束）
 
 这里的设计判断是：
 
@@ -402,7 +446,7 @@ FEISHU_FOLDER_TEAM_B_QA_RULE_FILE=rules/qa/folders/team_b.mdc
 - 但当前工作区此时不能宣称自己已具备飞书抓取能力
 - 该状态与“企业内可见权限初始化失败”一样，都属于部分完成而非整体成功
 
-### 7.4 唯一性约束
+### 7.5 唯一性约束
 
 第一版至少保证以下唯一性：
 
@@ -416,23 +460,26 @@ FEISHU_FOLDER_TEAM_B_QA_RULE_FILE=rules/qa/folders/team_b.mdc
 
 但若实现方后续决定增加更严格约束，应以不破坏当前 `.env` 合同为前提。
 
+**可选完整性自检（第一版不强制）**：`onboard` 启动或 CI 可校验 `FEISHU_FOLDER_ROUTE_KEYS` 中每个 key 均存在完整 `FEISHU_FOLDER_<KEY>_*` 分组，避免索引与分组长期不一致。
+
 ## 8. 与现有 spec 的联动口径
 
-- 根 `.env` 真源与 `dify_target_key` 静态配置解析口径，以 [2026-04-26-root-env-and-dify-target-contract-design.md](file:///c:/WorkPlace/NewVLA/docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md) 为准
+- 根 `.env` 真源与 `dify_target_key` 静态配置解析口径，以 [2026-04-26-root-env-and-dify-target-contract-design.md](./2026-04-26-root-env-and-dify-target-contract-design.md) 为准
 - `webhook` 后续必须直接解析根 `.env` 中的 route 索引和 route 分组，不再把 JSON 作为运行时真源
 - `webhook` 的路由结果必须显式得到 `dify_target_key`、`dataset_id`、`qa_rule_file`
 - `task_context.json` 中必须显式写入 `dify_target_key`、`dataset_id`、`qa_rule_file`
-- `lark-cli` 初始化职责与 `feishu_fetch` 工作区初始化口径，以 [2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md](file:///c:/WorkPlace/NewVLA/docs/superpowers/specs/2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md) 为准；但第一版执行入口由 `onboard` 承担
+- `lark-cli` 初始化职责与 `feishu_fetch` 工作区初始化口径，以 [2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md](./2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md) 为准；但第一版执行入口由 `onboard` 承担
 - 若后续实现仍存在“onboard 只产出 JSON 路由配置”或“运行时不需要 `dify_target_key`”一类旧逻辑，均应视为与本设计冲突
 
 ## 9. 验收标准
 
-- 能基于飞书 App 身份创建一个新的飞书 App 文件夹
+- 能基于应用身份获取 `tenant_access_token`，并调用 **`drive/v1/files/create_folder`**（或文档化且与官方一致的继任路径）创建一个新的云空间文件夹
 - 创建成功后能拿到 `folder_token` 和可访问 URL
 - 工具能校验 `dify_target_key` 对应的 Dify 静态配置组真实存在
-- 工具能校验 `qa_rule_file` 满足运行时 `rules/` 相对路径合同，且目标文件在当前工作区真实存在
-- 工具能把该 `folder_token` 及对应业务映射写回仓库根 `.env`
-- 在 `onboard` 完成后，当前工作区能完成一次 bot-only 口径的 `lark-cli` 初始化
-- 只有在权限初始化与 `lark-cli` 初始化都完成后，对应 `route_key` 才进入 `FEISHU_FOLDER_ROUTE_KEYS`
+- 工具能校验 `qa_rule_file` 满足 `rules/` 或 `prompts/rules/` 相对路径合同，且目标文件在**仓库根**下真实存在
+- 工具能把该 `folder_token` 及对应业务映射按 **§6.3 两阶段**写回仓库根 `.env`（阶段 B 仅当权限与 `lark-cli` 均成功）
+- 在 `onboard` 完成后，当前工作区能完成一次 bot-only 口径的 `lark-cli` 初始化；**可机器复核**：已安装 `lark-cli` 的**最低版本或发行说明**与本文一致，`lark-cli config init --help`（或等价）中出现 `--app-secret-stdin`，且校验步骤不依赖泄露 `app_secret` 的输出
+- 只有在 **企业内可见权限初始化**（非 §7.3 失败态）与 `lark-cli` 初始化都完成后，对应 `route_key` 才进入 `FEISHU_FOLDER_ROUTE_KEYS`（与 §1 P1 默认一致；若产品改为 P0 门禁须同步修订本节）
 - 根 `.env` 中存在清晰、可解析、可扩展的 folder route 真源模板
-- `webhook/config/folder_routes.example.json` 不再被视为运行时真源
+- `webhook/config/folder_routes.example.json` **不得**作为运行时真源；**是否**生成该派生文件 **不作为**第一版必达项
+- **续跑**：同一 `route_key` 在已有 `FEISHU_FOLDER_<KEY>_TOKEN` 时，默认不重复创建文件夹，除非显式强制选项（§6.1b）

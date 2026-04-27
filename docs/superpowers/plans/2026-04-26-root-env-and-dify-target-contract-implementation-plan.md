@@ -1590,9 +1590,12 @@ Expected:
 
 - [ ] **Step 2: Add failing config and facade tests**
 
-Create `feishu_fetch/tests/test_config.py`:
+> **修订说明（2026-04-27）：** 下列 **Step 2–4** 内嵌的 `feishu_fetch` 示例代码为**早期合同草案**，与当前仓库实现**不一致**，**勿照抄合并**。当前实现要点：`FeishuFetchSettings` **无** `lark_cli_command` / **无** `markitdown_command` 等可执行名配置字段；`load_feishu_fetch_settings` 若解析到 **`LARK_CLI_COMMAND`** 则立即 **`ValueError`**（须从根 `.env` 删除该键）；`facade` 仅 `shutil.which("lark-cli")` + `subprocess`，命令名不经 settings。正式证件：[`2026-04-27-feishu-fetch-lark-cli-workspace-init-implementation-plan.md`](./2026-04-27-feishu-fetch-lark-cli-workspace-init-implementation-plan.md) 文首「修订」段与 `feishu_fetch/src/`。
+
+Create `feishu_fetch/tests/test_config.py`（**下方代码为过时草案**，见块首修订说明；与当前 `feishu_fetch/tests/test_config.py` 不同）：
 
 ```python
+# === 历史草案：含 LARK_CLI_COMMAND / lark_cli_command，已不符合当前实现 ===
 from pathlib import Path
 
 import pytest
@@ -2098,7 +2101,7 @@ __all__ = [
 ]
 ```
 
-Update `feishu_fetch/README.md`:
+Update `feishu_fetch/README.md`（**过时**：当前 `feishu_fetch` 不读 `FEISHU_APP_SECRET` / `MARKITDOWN_COMMAND` / `LARK_CLI_COMMAND`；见 [`2026-04-27-feishu-fetch-lark-cli-workspace-init-implementation-plan.md`](./2026-04-27-feishu-fetch-lark-cli-workspace-init-implementation-plan.md) 修订段。）：
 
 ````md
 # feishu-fetch
@@ -2110,7 +2113,7 @@ Update `feishu_fetch/README.md`:
 - `FEISHU_APP_ID`
 - `FEISHU_APP_SECRET`
 - `FEISHU_REQUEST_TIMEOUT_SECONDS`
-- `LARK_CLI_COMMAND`
+- `LARK_CLI_COMMAND`（**历史草案；已废弃**，当前实现见 2026-04-27 feishu-fetch plan）
 - `MARKITDOWN_COMMAND`
 
 所有静态配置都从仓库根目录 `.env` 读取；运行时请求只提供 `document_id`、`file_token`、`doc_type`、`output_dir` 这类业务参数。

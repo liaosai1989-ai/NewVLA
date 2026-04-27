@@ -1,0 +1,12 @@
+---
+description: 管线与工作区设计原则：机器可控、LLM 友好、run_id 隔离、webhook/Agent 边界、注入方式
+alwaysApply: true
+---
+
+# 设计原则
+
+- 机器可控：调度逻辑不依赖 LLM 理解是否准确
+- LLM 友好：任务说明先讲目标，再给附件
+- 目录稳定：上下文文件按 run_id 隔离，避免互相覆盖
+- 边界清晰：webhook 只负责触发和调度；workspace 内 Agent 负责业务执行
+- 不再使用“大量 env / 生硬 JSON 拼 prompt”作为主要注入方式

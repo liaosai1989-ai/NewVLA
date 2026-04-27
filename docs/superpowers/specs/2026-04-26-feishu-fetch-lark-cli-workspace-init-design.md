@@ -1,5 +1,7 @@
 # Feishu Fetch Lark CLI Workspace Init Design
 
+> **落地状态：已落地**（2026-04-27；与仓库 `feishu_fetch` 包、`feishu_fetch/README.md`、`onboard/操作手册.md` 工作区根与 `cwd` 约定及 `BugList.md` BUG-001 包内核对一致。）
+
 ## 1. 背景与问题
 
 当前仓库已经确定：
@@ -39,7 +41,7 @@
 
 本设计完成后，应达到以下结果：
 
-- `feishu_fetch` 不再直接消费 `FEISHU_APP_ID` 和 `FEISHU_APP_SECRET`
+- `feishu_fetch` 不再将 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 作为模块运行时业务参数或凭证注入来消费；`FEISHU_APP_SECRET` 仍不读不传。`FEISHU_APP_ID` 若用于预检，仅允许 §7.2 / §9.2 所述对根 `.env` 的只读比对
 - 飞书凭证进入执行环境初始化合同，而不是模块运行时合同
 - `feishu_fetch` 只消费“已初始化好的 `lark-cli` 执行环境”
 - `LARK_CLI_COMMAND` 在所有抓取分支统一生效，不再半接线
@@ -101,6 +103,12 @@
 - `document_id`、`file_token`、`doc_type` 等任务参数
 - QA 抽取
 - Dify 上传
+
+**执行上下文一致性**（`config init` 写入的配置须与后续 `config show` / 正文抓取子进程读到的是**同一套** `lark-cli` 配置）：
+
+- `lark-cli` 实际读写的配置作用域由**已验证的 `lark-cli` 文档与实测**为准（常见因素含运行用户、`HOME`、当前工作目录、CLI 自身 profile/工作区约定等）；**不得**在本 spec 中虚构未经证实的环境变量名作为合同。
+- `onboard` 执行 `config init` 时所用的 **OS 用户、工作目录、以及任务侧子进程可继承的环境约定**，须与 **`feishu_fetch` 调用 `config show` 与后续抓取** 一致。若 init 在 A 上下文、预检/抓取在 B 上下文，会出现「初始化已成功但预检长期报未初始化或 `appId` 与根 `.env` 不一致」的假阴性；根因是**初始化与运行不在同一执行上下文**，而非 `feishu_fetch` 逻辑单点错误。
+- **根 `.env` 的路径**（`FEISHU_APP_ID` 比对真源）与 **CLI 内部持久化配置的落点** 是两层问题：后者仅由**该次** `config show` 在**其实际运行上下文**中反映。实现与运维说明应约定 **管线工作区根**、**解析根 `.env` 的单一规则**，并保证 `onboard` 与任务运行时对 **工作区根 / 子进程 `cwd`（若与 CLI 行为相关）** 的约定一致；排障时在**与任务相同**的用户/目录下复现 `config show` 与 init。
 
 ### 6.2 `feishu_fetch`
 
@@ -188,15 +196,18 @@
 - `LARK_CLI_COMMAND`
 - `FEISHU_REQUEST_TIMEOUT_SECONDS`
 
-从 `feishu_fetch` 模块合同中移除：
+从 `feishu_fetch` 模块**运行时**合同中移除（不再作为业务参数、凭证注入或 token 链路的输入）：
 
-- `FEISHU_APP_ID`
-- `FEISHU_APP_SECRET`
+- 作为运行时输入的 `FEISHU_APP_ID`（与下面「仅校验只读」区分）
+- `FEISHU_APP_SECRET`（`feishu_fetch` 不读、不传递、不写入任务或子进程 `env`）
 - `MARKITDOWN_COMMAND`
+
+**`FEISHU_APP_ID` 的唯一条款外用途（与 §9.2 通过标准一致）**：允许从**根 `.env` 只读**该字符串，仅用于与 `lark-cli config show` 所解析结果中的 `appId` 做**一致性比对**，防止 CLI 中配置的是另一飞书应用却继续抓取。不用于 `config init`、不通过 `subprocess` 的 `env` 注入子进程。该用途不属于「将应用凭证当模块运行时业务参数消费」，与 §9.3 不矛盾。
 
 解释：
 
-- `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 不再是 `feishu_fetch` 模块运行时输入
+- `FEISHU_APP_SECRET` 不再是、也不得成为 `feishu_fetch` 模块的输入
+- 不以「抓取前临时塞一对 env 就生效」的方式消费 `FEISHU_APP_ID`；若实现预检，对 `FEISHU_APP_ID` 的读法以上段「仅校验只读」为限
 - `MARKITDOWN_COMMAND` 当前真实实现未消费，继续保留只会制造伪配置项
 
 ### 7.3 文档合同
@@ -204,7 +215,7 @@
 README、spec、测试和对外示例必须统一口径：
 
 - 飞书凭证属于执行环境初始化合同
-- `feishu_fetch` 不直接读取或传递飞书凭证
+- `feishu_fetch` 不读取、不传递 `FEISHU_APP_SECRET`；不以凭证形式将应用秘钥写入 `task_context` 或子进程。对 `FEISHU_APP_ID` 若需预检，仅允许 §7.2 与 §9.2 所描述的「与 `config show` 的 `appId` 一致的只读比对」
 - `feishu_fetch` 只要求当前执行环境中的 `lark-cli` 已完成初始化
 - 命中需转换格式时，新代码固定使用 `MarkItDown` 转 Markdown
 - `MarkItDown` 是实现依赖，不再通过 `MARKITDOWN_COMMAND` 暴露为配置项
@@ -222,7 +233,7 @@ README、spec、测试和对外示例必须统一口径：
   -> 产出可供 Agent 使用的 lark-cli 执行环境
 ```
 
-此阶段完成后，当前执行环境进入“可抓取”状态。
+此阶段完成后，当前执行环境进入“可抓取”状态。该“可抓取”**仅**在 **§6.1 执行上下文一致性** 成立时有效：后续任务中的 `config show` 与抓取必须与本次 `config init` 处于 `lark-cli` 所见的**同一配置作用域**（同用户、与 CLI 行为一致的 `cwd`/工作区约定等）。
 
 ### 8.2 任务运行阶段
 
@@ -266,7 +277,7 @@ task_context.json
 
 ### 9.2 配置检查顺序
 
-`feishu_fetch` 执行前应按如下顺序检查：
+`feishu_fetch` 执行前应按如下顺序检查；其 `lark-cli` 子进程（含 `config show` 与后续抓取）须满足 **§6.1 执行上下文一致性**，否则预检结果不可代表 `onboard` 已写入的配置。
 
 1. `LARK_CLI_COMMAND` 可执行
 2. 当前执行环境中的 `lark-cli` 已完成初始化
@@ -314,6 +325,12 @@ task_context.json
 - JSON 中不存在 `appId`
 - `appId` 为空
 - `appId` 与根 `.env` 中的 `FEISHU_APP_ID` 不一致
+
+**`config show` 输出形态与 `lark-cli` 版本**（与 §10.4 一致，落实「仅依赖已验证的 CLI 行为」）：
+
+- 第一版中「`config show` 退出成功、stdout 可解析出含非空 `appId` 的配置 JSON」等判据，**不是**对**任意**已安装 `lark-cli` 的无条件保证，而是对**本仓库在 README/发布说明中声明支持、并经过实测的 `lark-cli` 主/次版本（或范围）** 之 `config show` 行为的要求；实现侧解析器**必须**有测试锁住该支持范围内的真实输出样例。
+- 若用户环境的 CLI 升级或变更导致 stdout 形态**不再被**当前解析器识别，应视为**预检失败**（与 §10.2「当前执行环境未完成或 `lark-cli` 配置状态不可信」同族），并可在错误提示中建议**核对与文档声明的 CLI 版本**；**不得**在无法解析时放宽为通过预检。
+- 与 §10.4 的衔接：除子命令/参数与 help 的对外规格外，**`config show` 的可机器解析形态** 也属「以当前已验证版本之 help 与实测为准」的修正面；修正规格时须同步更新解析与相关测试。
 
 ### 9.3 不做凭证 env 注入
 
@@ -381,6 +398,8 @@ task_context.json
 - 该失败不得被误判为“执行环境未初始化”或“CLI 不可执行”
 - 该失败过程中，不得尝试切换飞书应用身份、读取第二组飞书凭证或触发 user login 兜底
 
+全链路**正确**须满足上列验收要求，但其**在 CI/默认测试中的落位** 与 **「是否每一路 PR 必跑真云」** 解耦，见 **§11.3 测试层级与真云验收**。
+
 ### 10.4 命令参数与当前版本漂移
 
 场景：
@@ -408,13 +427,13 @@ task_context.json
 
 ### 11.1 应删除的测试方向
 
-不再保留以下测试方向：
+不再保留以下测试方向（与 **§7.2** 中「仅与 `config show` 做 `appId` 只读预检」**不冲突** 者除外）：
 
-- `feishu_fetch` 从根 `.env` 读取 `FEISHU_APP_ID`
-- `feishu_fetch` 从根 `.env` 读取 `FEISHU_APP_SECRET`
+- 将 `feishu_fetch` 从根 `.env` 读取的 `FEISHU_APP_ID` 当作**模块运行时业务参数或凭证注入** 来测的那类用例
+- `feishu_fetch` 从根 `.env` 读取 `FEISHU_APP_SECRET` 的用例
 - `MARKITDOWN_COMMAND` dataclass 形状稳定性
 
-这些测试对应的合同已经不成立。
+上列对应旧合同；若测试覆盖 **只读 `FEISHU_APP_ID` 与 `config show` 一致性**，属 §7.2/§9.2 所允许行为，**不得**因本 bullet 而删除。
 
 ### 11.2 应新增或保留的测试方向
 
@@ -430,7 +449,21 @@ task_context.json
 - 权限失败场景下，不尝试切换飞书应用身份、不读取第二组飞书凭证、不触发 user login 兜底
 - `FEISHU_REQUEST_TIMEOUT_SECONDS` 仍按正数配置校验
 
-### 11.3 回归重点
+其中涉及 **真云、真实 `cloud_docx` 抓取** 的项，在 **CI/默认 `pytest` 中是否必跑、如何门控** 见 **§11.3**；§10.3 的验收要求不默认等价于「每一路公共 CI 均执行真云全条」。
+
+### 11.3 测试层级与真云验收
+
+**目的**：满足 §10.3 与 §11.2 中真抓取类要求，同时**不**把 **飞书租户、长期文档、根 `.env` 类秘钥** 强压进**任意**公共贡献者的默认 `pytest` 或无可选门控的流水线。
+
+- **L0（不触达飞书 / 以 mock 与本地状态为主）**：mock 子进程、固定 `config show` 输出样例、或仅验证分支与错误分类逻辑；**应**作为日 CI 或默认门禁的一部分。
+- **L1（真云集成，显式门控、默认跳过或单独 job）**：需网络、有效应用凭证、稳定文档标识（如已授权/未授权各一）；**通过环境变量/仓库密文/受控 job** 显式打开；**不得**因未配飞书而令默认 `pytest` 对全体贡献者恒红。实现计划在「谁跑、何 secret、失败阻断谁」上写清即可。
+- **L2（发布前 / 预发 / 受控环境清单）**：§10.3「须通过**真实**抓取命令验证」的 Go/No-Go 可落在此类步骤；与「默认 PR」解耦不削弱设计意图，**避免**在 PR 中硬塞真实 `FEISHU_APP_SECRET` 或公共 fixture。
+
+**权限不足归类** 在 L1 中应基于**可维护的**启发式（可区分于 §10.1/10.2），**避免** 对整段 stderr 的易碎全字匹配；若上游错误文案漂移，在实现侧更新 allowlist/关键字，而非放宽 §10.3 的区分要求。
+
+**根 `.env` 真源** 与 **Repository secrets / 受控 worker** 的映射为部署与工程策略，**不在**本 spec 中规定把秘钥写进某份全仓库共享的测试 fixture。
+
+### 11.4 回归重点
 
 本轮最关键的回归点有三个：
 
@@ -460,7 +493,7 @@ task_context.json
 
 - 执行环境初始化层能一次性把 `lark-cli` 配置成 bot-only 可用状态
 - 所有进入该抓取链路的文档，都能被根 `.env` 中这同一个飞书应用 bot 身份访问
-- `feishu_fetch` 不再读取或保存飞书凭证
+- `feishu_fetch` 不读取、不保存 `FEISHU_APP_SECRET`；对 `FEISHU_APP_ID` 仅允许 §7.2 与 §9.2 所述只读比对，不属于「以凭证形式保存或业务式消费」
 - `feishu_fetch` 的所有 `lark-cli` 分支都走统一命令入口
 - 命中需转换格式时，新代码固定使用 `MarkItDown`，且不通过 `MARKITDOWN_COMMAND` 暴露配置项
 - 未初始化执行环境、命令缺失、应用权限不足三类错误都能被明确区分
@@ -474,5 +507,6 @@ task_context.json
 - `config init` 的自动化执行细节
 - `feishu_fetch` 中配置检查函数的具体实现
 - 旧测试、README 和 plan 的迁移步骤
+- **§11.3** 中 L0/L1/L2 与 CI、显式门控、受控 job 的**具体命名与落地**（本 spec 只定层级与原则）
 
 本设计不继续展开实现顺序，交由后续 implementation plan 收敛。
