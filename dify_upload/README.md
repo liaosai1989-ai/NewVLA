@@ -4,7 +4,7 @@
 
 ## 边界
 
-- 调用方必须先提供完整 `api_base`、`api_key`、`dataset_id`
+- 调用方必须先提供完整 `api_base`、`api_key`、`dataset_id`（`api_key` 在多数部署下为**实例级**；与 `dataset_id` 分工：谁有权访问、写到哪个数据集）
 - 本模块不做 `folder_token` 路由
 - 本模块不读取运行时上下文
 - 本模块只处理 CSV 上传
@@ -27,7 +27,7 @@ from dify_upload import DifyTargetConfig, upload_csv_to_dify
 
 target = DifyTargetConfig(
     api_base="https://dify.example.com",
-    api_key="dataset-key",
+    api_key="your-dify-instance-api-key",
     dataset_id="dataset-123",
     http_verify=True,
     timeout_seconds=60.0,
