@@ -1,5 +1,7 @@
 # Root Env And Dify Target Contract Implementation Plan
 
+> **落地状态：已落地（主路径）**（2026-04-28；`webhook` / `dify_upload` / `feishu_fetch` 已按根 `.env` 合同收敛；`folder_token` 路由与 `FOLDER_ROUTES_FILE` 真源仍存缺口，见 `BugList.md` BUG-005 与文内修订说明。）
+
 ## 修订说明（2026-04-27 webhook `ExecutorSettings` 与 `CURSOR_CLI_COMMAND`）
 
 本文件以下关于联动模块的正文**保留原文**。正文中**嵌入的** `ExecutorSettings` 代码片段若仍含 `cursor_cli_command: ... Field(..., alias="CURSOR_CLI_COMMAND")`，与**当前 `webhook` 实现**不一致，视为**过时**。

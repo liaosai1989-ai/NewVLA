@@ -1,5 +1,7 @@
 ﻿# Webhook Cursor Executor Implementation Plan
 
+> **落地状态：已落地**（2026-04-28；实现见 `webhook/src/webhook_cursor_executor/`；运维与升级口径见 `webhook/操作手册.md`；文首修订说明与 `BugList.md` BUG-001 为差异真源。）
+
 ## 修订说明（2026-04-27 `cursor` 仅 PATH、正文代码片段中 `CURSOR_CLI_COMMAND` 已过时）
 
 本 plan 以下正文**保留原文**，不整段替换。正文中若出现 `cursor_cli_command` / `CURSOR_CLI_COMMAND`、或 `launch_cursor_agent(..., command=settings.cursor_cli_command)` 等，均视为**历史草稿**，与**当前仓库实现**不一致。

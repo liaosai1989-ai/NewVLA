@@ -1,5 +1,7 @@
 # Dify Upload Rebuild Design
 
+> **落地状态：已落地**（2026-04-28；实现见 `dify_upload/`；配置真源与「禁止默认 `DIFY_DATASET_ID`」等见下文修订说明及 root-env contract spec。）
+
 ## 修订说明
 
 `dify_upload` 的配置来源口径已由 [2026-04-26-root-env-and-dify-target-contract-design.md](file:///c:/WorkPlace/NewVLA/docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md) 覆盖。

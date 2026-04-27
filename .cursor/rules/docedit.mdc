@@ -10,6 +10,20 @@ alwaysApply: false
 
 在 **plan 已落地**（实现完成）后，将对应 **plan** 与 **spec** 中的状态标记为 **已落地**（或与仓库一致的等价表述），保持文档与事实一致。
 
+### 必须成对更新
+
+- 同一主题的 **implementation plan** 与 **design spec** 要**同时**加/改落地状态，避免只改一侧。
+- 文首用 **单行引用块**（Markdown `>`）置顶，**放在第一个 `## 修订说明` 或正文大标题之前**；**勿**只用修订说明代替落地状态。
+
+### 推荐格式（可按事实增删括号内指针）
+
+```markdown
+> **落地状态：已落地**（2026-04-28；实现见 `path/to/package/`；与 `BugList.md` BUG-xxx 等已知缺口以括号或正文为准。）
+```
+
+- 实现已合并但**验收/合同仍有已知缺口**：状态可写 **已落地（主路径）** 或 **实现已合入；验收未闭环**，并在同块内指到 `BugList` / 修订说明，避免读者误以为「零缺口」。
+- 仓库内可参考已对齐的一对：`docs/superpowers/specs/2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md` 与同名 `plans/2026-04-27-...-implementation-plan.md` 文首块。
+
 ## 未落地文档的修改
 
 **尚未落地** 的 plan/spec 需要改动时：

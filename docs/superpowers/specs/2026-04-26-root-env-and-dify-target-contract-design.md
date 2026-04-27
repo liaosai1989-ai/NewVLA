@@ -1,5 +1,7 @@
 # Root Env And Dify Target Contract Design
 
+> **落地状态：已落地（主路径）**（2026-04-28；与 `.cursor/rules/env.mdc` 及三模块 settings 一致；路由真源与 JSON 派生产物待对齐见 `BugList.md` BUG-005。）
+
 ## 修订说明（2026-04-27 MarkItDown 固定依赖口径补充）
 
 本文件以下正文保留原文，不直接改写原设计内容。
