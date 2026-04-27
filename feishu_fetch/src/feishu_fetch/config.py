@@ -29,7 +29,12 @@ def _resolve_env_file(env_file: Path | None, environ: dict[str, str]) -> Path:
     raw = (environ.get("FEISHU_FETCH_ENV_FILE") or "").strip()
     if raw:
         return Path(raw).expanduser().resolve()
-    return (Path.cwd() / ".env").resolve()
+    primary = (Path.cwd() / ".env").resolve()
+    values = _parse_dotenv_file(primary)
+    raw_from_dotenv = (values.get("FEISHU_FETCH_ENV_FILE") or "").strip()
+    if raw_from_dotenv:
+        return Path(raw_from_dotenv).expanduser().resolve()
+    return primary
 
 
 @dataclass(frozen=True)

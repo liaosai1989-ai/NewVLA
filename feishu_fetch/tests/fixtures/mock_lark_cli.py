@@ -39,9 +39,9 @@ def _main() -> int:
 
     if len(args) >= 3 and args[0] == "docs" and args[1] == "+fetch":
         try:
-            document_id = args[args.index("--document-id") + 1]
+            document_id = args[args.index("--doc") + 1]
         except (ValueError, IndexError):
-            sys.stderr.write("missing --document-id\n")
+            sys.stderr.write("missing --doc\n")
             return 2
 
         payload = {

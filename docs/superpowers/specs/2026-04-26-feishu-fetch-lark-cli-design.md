@@ -12,6 +12,12 @@
 - 若目标文档对该应用不可访问，应按“应用权限不足”处理，而不是在 `feishu_fetch` 运行时切换应用身份兜底
 - `feishu_fetch` 不负责推断当前请求应绑定哪个飞书应用；相关初始化边界以 [2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md](file:///c:/WorkPlace/NewVLA/docs/superpowers/specs/2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md) 为准
 
+## 修订说明（2026-04-27 `lark-cli docs +fetch` 参数）
+
+- 现行 `lark-cli`：`docs +fetch --api-version v2` 使用 **`--doc <URL|token>`** 指定文档；**无** `--document-id` 标志。
+- 仓库实现已同步：`feishu_fetch` `facade` 对 `cloud_docx` 传 `--doc`；**去掉** `--scope docx`（整篇读取用 v2 默认 `scope`）。
+- **以下正文**若仍写 `--document-id`、`--scope docx` 或与上述不符的示例 argv，**保留不改**；理解与验收以本段 + 仓库 `facade.py` 为准。
+
 ## 1. 背景与目标
 
 本设计用于重构旧的 `old_code/feishu_fetch` 参考实现，在 `c:\WorkPlace\NewVLA\feishu_fetch` 下建设新的飞书正文抓取模块。

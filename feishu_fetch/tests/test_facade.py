@@ -85,9 +85,7 @@ def test_cloud_docx_fetches_xml_and_writes_artifact(tmp_path, monkeypatch):
         "xml",
         "--detail",
         "simple",
-        "--scope",
-        "docx",
-        "--document-id",
+        "--doc",
         "doccnxxxx",
     ]
 
@@ -196,10 +194,16 @@ def test_drive_file_keeps_direct_readable_file_without_markitdown(tmp_path, monk
                 stdout=json.dumps({"appId": app_id}, ensure_ascii=False)
             )
         if len(args) >= 3 and args[1:3] == ["drive", "+download"]:
-            out_dir = Path(args[args.index("--output-dir") + 1])
-            out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / "notes.md").write_text("# done\n", encoding="utf-8")
-            return FakeCompletedProcess(stdout="downloaded")
+            out_rel = args[args.index("--output") + 1]
+            out_path = (tmp_path / out_rel).resolve()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text("# done\n", encoding="utf-8")
+            return FakeCompletedProcess(
+                stdout=json.dumps(
+                    {"ok": True, "data": {"saved_path": str(out_path)}},
+                    ensure_ascii=False,
+                )
+            )
         raise AssertionError(args)
 
     def fail_import(name):
@@ -222,11 +226,13 @@ def test_drive_file_keeps_direct_readable_file_without_markitdown(tmp_path, monk
     )
 
     artifact = Path(result.artifact_path)
-    assert artifact.name == "notes.md"
+    assert artifact.name == "_filecnxxxx_download.md"
     assert artifact.suffix == ".md"
     assert artifact.read_text(encoding="utf-8") == "# done\n"
     assert result.ingest_kind == "drive_file"
     assert calls[2][1:3] == ["drive", "+download"]
+    assert "--output" in calls[2]
+    assert "--overwrite" in calls[2]
 
 
 def test_drive_file_exports_docx_with_explicit_format_and_converts_to_markdown(
@@ -371,10 +377,16 @@ def test_drive_file_rejects_unsupported_suffix_and_runtime_failures(
         if len(args) >= 3 and args[1:3] == ["drive", "+download"]:
             if not first_drive_download["done"]:
                 first_drive_download["done"] = True
-                out_dir = Path(args[args.index("--output-dir") + 1])
-                out_dir.mkdir(parents=True, exist_ok=True)
-                (out_dir / "binary.exe").write_bytes(b"boom")
-                return FakeCompletedProcess(stdout="downloaded")
+                out_rel = args[args.index("--output") + 1]
+                out_path = (tmp_path / out_rel).resolve()
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_bytes(b"MZ boom")
+                return FakeCompletedProcess(
+                    stdout=json.dumps(
+                        {"ok": True, "data": {"saved_path": str(out_path)}},
+                        ensure_ascii=False,
+                    )
+                )
             return FakeCompletedProcess(returncode=2, stderr="permission denied")
         return FakeCompletedProcess(returncode=2, stderr="permission denied")
 
@@ -406,44 +418,6 @@ def test_drive_file_rejects_unsupported_suffix_and_runtime_failures(
         )
     assert perm_failed.value.code == "permission_error"
     assert "无权限" in str(perm_failed.value) or "权限" in str(perm_failed.value)
-
-
-def test_drive_file_rejects_ambiguous_new_files_after_download(tmp_path, monkeypatch):
-    app_id = "cli_df5"
-    write_root_dotenv(tmp_path, feishu_app_id=app_id)
-
-    def fake_run(args, **kwargs):
-        assert kwargs.get("cwd") == tmp_path.resolve()
-        if len(args) >= 2 and args[1] == "--help":
-            return FakeCompletedProcess(stdout="usage")
-        if len(args) >= 3 and list(args[1:3]) == ["config", "show"]:
-            return FakeCompletedProcess(
-                stdout=json.dumps({"appId": app_id}, ensure_ascii=False)
-            )
-        if len(args) >= 3 and args[1:3] == ["drive", "+download"]:
-            out_dir = Path(args[args.index("--output-dir") + 1])
-            out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / "notes.md").write_text("# done\n", encoding="utf-8")
-            (out_dir / "fetch-log.json").write_text('{"ok":true}\n', encoding="utf-8")
-            return FakeCompletedProcess(stdout="downloaded")
-        raise AssertionError(args)
-
-    monkeypatch.setattr(shutil, "which", _which_lark)
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    with pytest.raises(FeishuFetchError) as exc:
-        fetch_feishu_content(
-            FeishuFetchRequest(
-                ingest_kind="drive_file",
-                file_token="filecnxxxx",
-                doc_type="file",
-                output_dir=tmp_path,
-            ),
-            env_file=tmp_path / ".env",
-        )
-
-    assert exc.value.code == "runtime_error"
-    assert "多个新文件" in str(exc.value)
 
 
 def test_cloud_docx_runs_against_local_mock_lark_cli(tmp_path, monkeypatch):
@@ -499,8 +473,6 @@ def test_cloud_docx_runs_against_local_mock_lark_cli(tmp_path, monkeypatch):
         "xml",
         "--detail",
         "simple",
-        "--scope",
-        "docx",
-        "--document-id",
+        "--doc",
         "doccn_local_mock",
     ]
