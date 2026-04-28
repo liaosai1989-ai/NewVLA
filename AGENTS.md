@@ -119,4 +119,6 @@
 
 这些文件是 **待注入真实工作区的长期模板资产**，先保存在本仓库的 `prompts/` 下，由后续初始化逻辑分发到实际工作区。**执行侧上传与 `task_context` 阅读合同**以 `prompts/AGENTS.txt` 为准（物化后为工作区根 `AGENTS.md`）；本段不重复细则。
 
+**生产工作区物化目录**（含 **`tools/`** 内嵌拷贝、**`runtime/webhook/`**、**`vla_env_contract/`**（**`vla-env-contract`** 键名合同，非 feishu-onboard CLI））以 **`docs/superpowers/specs/2026-04-28-workspace-embedded-runtime-design.md`** 为准；落地跟踪 **`NiceToHave.md` NTH-008**。**Plan 落地后**须按 **`plan-landed-renew-agents-rules.mdc`** 使 **`prompts/AGENTS.txt`** 与本规格及实现一致。运维可调 **`bootstrap/README.md`**（**`install-workspace-editables`**、**`doctor`**、**`probe`**）。
+
 `task_prompt.md` 属于 webhook 侧运行时注入物，由对端模块维护，不在本仓库内作为模板资产保存。

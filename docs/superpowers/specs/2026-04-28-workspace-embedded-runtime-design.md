@@ -1,11 +1,12 @@
 # 单机生产：工作区内嵌运行时代码
 
-> **落地状态：未落地**（实现目标：`materialize-workspace` 或等价子命令物化本节树；`doctor` 可校验；运维可仅从工作区启动 webhook/RQ，不依赖 `{CLONE_ROOT}` 路径常驻。）
+> **落地状态：已落地（主路径）**（2026-04-28；实现见 **`bootstrap/`**（含 **`bootstrap probe`**）、工作区 **`vla_env_contract/`**、**`runtime/webhook/`**、**`tools/*`**（`doctor --workspace`、`install-workspace-editables`）；**`production-bootstrap-deployment-design.md` §3.4** 与 **`…-production-bootstrap-deployment-implementation-plan.md`** 旧 junction 叙述 **仍属 NTH-008 Task 10**，与本文成对收口前勿当作已对齐。）
 
 ---
 
 ## 修订说明
 
+- **2026-04-28：NTH-008 主路径已落地：** 物化树、`doctor`、探活与子命令语义以 **`docs/superpowers/plans/2026-04-28-workspace-embedded-runtime-implementation-plan.md`** 为准；根 **`prompts/AGENTS.txt`**（物化后为工作区 **`AGENTS.md`**）已与 **`vla_env_contract/`**、**`runtime/webhook/`** 等价长期资产对齐；HTTP 探活 **`GET {WEBHOOK_PROBE_BASE}/health`** 与 **`WEBHOOK_PROBE_BASE`** 见 **`docs/superpowers/samples/pipeline-workspace-root.env.example`**。
 - **2026-04-28：** 初稿。**单机 Windows**，工作区内 **目录拷贝** 物化 `webhook` 与 `tools` 同源树，运行期不依赖 `{CLONE_ROOT}` 常驻。
 - **2026-04-28：** 删 **§3.3**（junction 与开发/生产并存）。本文只约定 **实目录拷贝**；联接克隆根 **不在**本规格内。
 - **2026-04-28：** 新增 **§10**：**NTH-008 交付中** **implementation plan 须** 列任务以拆除 `bootstrap` 内 **tools junction** 相关代码、CLI 开关与单测，并回写 README / 验收脚本；**`2026-04-28-production-bootstrap-deployment-design.md` §3.4** **在交付批次中** 与本文对齐（见 **§9、§10.2**）。
