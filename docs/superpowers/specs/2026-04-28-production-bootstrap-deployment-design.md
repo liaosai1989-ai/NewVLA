@@ -6,7 +6,10 @@
 
 ## 修订说明
 
+- **2026-04-28（NTH-008 / Task 10）：** **§3.4** 删除 **`tools/`** 以 **Windows junction** 指向克隆根之策略表述；生产工作区 **工具与 webhook 源码树**以 **[workspace-embedded-runtime-design.md](2026-04-28-workspace-embedded-runtime-design.md) §3** **实拷贝**布局为准（含 **`vla_env_contract/`**、**`runtime/webhook/`**、**`tools/dify_upload`**、**`tools/feishu_fetch`**）。**`doctor`** 校验语义与同 spec §6 / NTH-008 implementation plan 附录 A 对齐，**不再**以 junction 为签字前提。
+- **2026-04-28：** **部署介质生命周期**（克隆根是否持久保留 Git、代码介质与未来分发形态语义）：见 **[2026-04-28-deployment-artifact-lifecycle-design.md](2026-04-28-deployment-artifact-lifecycle-design.md)**；**不改变**本节 §2.1「运行真源 = 工作区 `.env`」结论。
 - **2026-04-28：** BUG-005 收口叙述与 webhook / task-context spec §7 对齐：**已配置 `FEISHU_FOLDER_ROUTE_KEYS`** 时，`pipeline_workspace.path` 与 **`VLA_WORKSPACE_ROOT`** / 工作区根 `.env` 解析一致，**不以** legacy JSON 内路径为运维主真源；**未配置** `FEISHU_FOLDER_ROUTE_KEYS` 时仍可能读 **`FOLDER_ROUTES_FILE`** JSON（遗留，`doctor` 可比对工作区路径并 WARNING）。§3.2 表中「与 webhook / pipeline_workspace.path 对齐」句反映上述合同；旧「仅以 JSON `pipeline_workspace.path` 为准、须与 `--workspace` 手工双写」的运维口径废止为 legacy 分支专用。
+- **2026-04-28（BUG-007）：** Windows、克隆路径某段含空格时，若仅向 pip 传入**子包目录的绝对路径**作为 **`-e`** 目标，同源 **`file:`** 依赖（如 **`file:../vla_env_contract`**）可能被错位解析。**实现侧**应对各子包使用 **`cwd` = 包目录 + `pip install -e .`**；**工作区**用 **`bootstrap install-workspace-editables`**；首装 **`bootstrap`** 的自动化脚本应在 **`bootstrap` 目录内**执行 **`pip install -e ".[test]"`**。人手排障与复现见 **`BugList.md` BUG-007**、**`bootstrap/README.md`**。
 
 ---
 
@@ -26,6 +29,8 @@
 
 - **维护仓库根** `{CLONE_ROOT}`：`git clone` **或** 将本仓库 **拷贝到客户机任意目录** 后的根路径；**每台机器、每次部署不同**，规格与 README **不写死**具体盘符或目录名。
 - **执行工作区根** `{WORKSPACE_ROOT}`：由 **客户或现场运维指定** 的绝对路径，经 **`materialize-workspace --workspace`** 传入，且与 **`VLA_WORKSPACE_ROOT`**、webhook **`pipeline_workspace.path`**（解析来源：`.env` 路由优先 / JSON 回退，见 [task-context-bootstrap spec §7.1](../specs/2026-04-28-task-context-bootstrap-sample-agent-contract-design.md)）规范化后一致；须满足 **§3.2**，**非**本规格替客户选定具体文件夹名。
+
+**部署介质 vs 长期运维：** **`{CLONE_ROOT}`**（维护仓库根）可采用 **`git clone`、拷贝或将来等价分发形态**得到；**不要求**在生产生命周期内持续与远端 Git 同步。**持久运维锚点**仍是 **`{WORKSPACE_ROOT}`** 与工作区 **`.env`**。细化语义（含 **`--clone-root`**、延后安装包表述）见 **[deployment-artifact-lifecycle-design.md](2026-04-28-deployment-artifact-lifecycle-design.md)**。
 
 ---
 
@@ -131,9 +136,12 @@
 ```text
 {WORKSPACE_ROOT}/
 ├── .env                            # 运行合同唯一真源（首份由 materialize 从维护仓库种子生成；见 §2.1）
-├── tools/                          # 工具集根（初始化阶段由 bootstrap 创建布局）
-│   ├── dify_upload/                # 与各工具模块同名；内容为克隆根的联接/占位策略见下
+├── vla_env_contract/               # 键名合同包（vla-env-contract）；由 materialize 自克隆根拷贝
+├── tools/                          # 工具集根；子目录为实拷贝（见下表与 workspace-embedded §3）
+│   ├── dify_upload/
 │   └── feishu_fetch/
+├── runtime/
+│   └── webhook/                    # webhook 包根；由 materialize 自克隆根 webhook/ 拷贝
 ├── rules/                          # 规则：*.mdc（由 prompts/rules/** 物化，不手写第二套正文）
 │   └── …                           # 例：qa/…/*.mdc，以 prompts 为准
 ├── AGENTS.md                       # 由 prompts/AGENTS.txt 物化（仓库维护 txt，工作区为 md）
@@ -148,16 +156,20 @@
 
 | 路径（相对工作区根） | 阶段 | 说明 |
 |----------------------|------|------|
-| **`.env`** | 初始化 + 运行 | **工作区根**下须存在 **`.env` 文件**——**运行合同唯一真源**（§2.1）。**首份**由 **`bootstrap materialize-workspace`** 从 **`{CLONE_ROOT}/.env`**（或 `.env.example` / `--seed-env`）**整份复制**（UTF-8）；其后运维 **以工作区根 `.env` 为台账** 填密钥、接 onboard 回写；**不得**将工作区 `.env` 提交进 git。维护仓库根 `.env` 仅作可选种子/备份；若采用 **硬链接/联接** 指向维护侧，须在 implementation plan 写明且 `doctor` 能验证。 |
-| **`tools/`** | 初始化 | **工具集根目录**，其下**一级子目录名**须与克隆根中**可被本管线调用的 Python 包目录名**对齐；**至少**包含 **`dify_upload/`**、**`feishu_fetch/`**。**内容策略（二选一，实现 plan 里写死一种并验收）**：(A) **目录联接（Windows junction）** 指向克隆根下同名的 `dify_upload/`、`feishu_fetch/` 源码树，保证工作区内路径稳定、不双份维护；(B) **空目录 + README** 仅作约定占位，实际解释器仍从全局 `pip install -e <克隆根>` 导入——**不得**再引入 venv。**不作为** `tools/` 子目录的：`lark-cli`（全局 PATH）、通常也不包含 **`webhook/`**、**`onboard/`**（服务端/入轨在克隆根执行，除非产品明确要求在工作区呈现文档入口）。 |
+| **`.env`** | 初始化 + 运行 | **工作区根**下须存在 **`.env` 文件**——**运行合同唯一真源**（§2.1）。**首份**由 **`bootstrap materialize-workspace`** 从 **`{CLONE_ROOT}/.env`**（或 `.env.example` / `--seed-env`）**整份复制**（UTF-8）；其后运维 **以工作区根 `.env` 为台账** 填密钥、接 onboard 回写；**不得**将工作区 `.env` 提交进 git。维护仓库根 `.env` 仅作可选种子/备份。 |
+| **`vla_env_contract/`** | 初始化 | **键名合同** Python 包根（分发名 **`vla-env-contract`**）。由 **`materialize-workspace`** 自 **`{CLONE_ROOT}/vla_env_contract`** **递归拷贝**；与 webhook/bootstrap 共用，**非** `feishu-onboard` CLI。详见 **[workspace-embedded-runtime-design.md §3](2026-04-28-workspace-embedded-runtime-design.md)**。 |
+| **`tools/`** | 初始化 | **工具集根目录**；**至少**包含 **`dify_upload/`**、**`feishu_fetch/`**，各为 **自克隆根同名目录递归拷贝** 的**实目录树**（**不**使用指向 **`{CLONE_ROOT}`** 的目录联接作为生产默认）。生产签字须在 **`{WORKSPACE_ROOT}`** 下对各包目录执行 **`pip install -e .`**（顺序与路径见 workspace-embedded **§4.1** 与 **`bootstrap install-workspace-editables`**）。**不作为** `tools/` 子目录的：`lark-cli`（全局 PATH）。**`onboard/`** **不**物化进工作区（入轨仅在维护仓/克隆根使用 **`feishu-onboard`**）。 |
+| **`runtime/webhook/`** | 初始化 | **webhook** 可安装包根（含 `pyproject.toml`）；由 materialize 自 **`{CLONE_ROOT}/webhook`** 拷贝至 **`{WORKSPACE_ROOT}/runtime/webhook`**；依赖路径修补见 workspace-embedded **§3.2**。 |
 | **`rules/**` | 初始化 | 与 `prompts/rules/**` 一致结构的 **`.mdc` 规则文件**；路径与 `task_context.json` 里 `qa_rule_file` 引用的工作区相对路径一致。 |
 | **`AGENTS.md`** | 初始化 | 源文件在仓库为 **`prompts/AGENTS.txt`**；物化到工作区时 **目标文件名为 `AGENTS.md`**，内容同步。 |
 | **`.cursor_task/{run_id}/`** | 运行时 | 由 **`webhook` `write_task_bundle`**（及同目录约定）创建；**每次任务**独立 `run_id` 子目录。与仓库 **`.cursor_task/{run_id}/`** 规则一致：须含 **`task_context.json`**、**`task_prompt.md`**、**`outputs/`**（**不是** `output` 单数），子工具产物（如 `outputs/feishu_fetch/`）遵循既有各模块文档。 |
 
 #### 校验
 
-- **`doctor`** / **`materialize-workspace`**：对工作区根执行 **存在性 + §3.2 路径合法** 校验；**须**校验工作区根 **`.env` 存在**（或 materialize 已写入）；可选比对与维护仓库种子的哈希/时间戳策略由 plan 定。可选校验 **`tools/dify_upload`**、**`tools/feishu_fetch`** 目标为 junction 且目标存在（若采用策略 A）。  
+- **`doctor`** / **`materialize-workspace`**：对工作区根执行 **存在性 + §3.2 路径合法** 校验；**须**校验工作区根 **`.env` 存在**（或 materialize 已写入）；**须**校验 **`vla_env_contract/`**、**`runtime/webhook/`**、**`tools/dify_upload`**、**`tools/feishu_fetch`** 为**实目录**且含预期包根，**import** 解析落在 **`{WORKSPACE_ROOT}`** 前缀下（细则见 **[workspace-embedded-runtime-design.md §6](2026-04-28-workspace-embedded-runtime-design.md)** 与 NTH-008 implementation plan **附录 A**）。  
 - **webhook / 任务代码**：创建 **`.cursor_task`** 时不得改为其他文件夹名，除非全仓变更与本节同步。
+
+**内嵌 runtime（单机生产）：** 本节 §3.4 树与 **[2026-04-28-workspace-embedded-runtime-design.md](2026-04-28-workspace-embedded-runtime-design.md) §3** **一致**；物化、**`doctor`**、**`bootstrap probe`** 与生产签字路径以实现与该文及 **`docs/superpowers/plans/2026-04-28-workspace-embedded-runtime-implementation-plan.md`** 为准。
 
 ---
 
@@ -202,7 +214,7 @@
    - 传入或配置中的 **执行工作区根路径** 是否符合 §3.2（含字符集），否则 **非零退出或明确告警**。
    - **工作区路径 vs webhook**：**能**从 JSON 回退路径读取 **`pipeline_workspace.path`** 时，与 **`Path(--workspace).resolve()`** 比对，**不一致须 WARNING**（§3.2）；**`.env` 路由模式**下 `doctor` 检查以 [task-context spec §9](../specs/2026-04-28-task-context-bootstrap-sample-agent-contract-design.md) 为准。**无**单独的 `CURSOR_WORKSPACE_ROOT`/`WORKSPACE` env 门禁键名。路由与 BUG-005 收口以 **task-context spec §7** + 实现为准。
 2. **`install-packages`（命名可调整）**：在**同一解释器**下对 `webhook`、`onboard`、`dify_upload`、`feishu_fetch`**仅执行约定好的 `pip install -e`**，失败则非零退出（**目的**：可 import/可调用 CLI；**不**表示已信任 onboard **行为**无缺，见 **§4.2**）。
-3. **`materialize-workspace`（P0）**：给定**执行工作区根路径**与 **克隆根路径**。**硬前提**：须能生成工作区根 **`.env`**——优先从 **`{CLONE_ROOT}/.env` 整份复制**；若克隆根无 `.env`，允许 **`.env.example` → 工作区** 或 **`--seed-env`**（见 **§2.1**、implementation plan）。在此前提下在工作区落下 **§3.4** 初始化树：**`tools/`**（及约定的子目录/联接策略）、**`prompts/AGENTS.txt` → `AGENTS.md`**、**`prompts/rules/**` → `rules/**`**；**不创建** `.cursor_task/{run_id}/`（由 webhook 运行时创建）。规则正文**不手写第二套**。
+3. **`materialize-workspace`（P0）**：给定**执行工作区根路径**与 **克隆根路径**。**硬前提**：须能生成工作区根 **`.env`**——优先从 **`{CLONE_ROOT}/.env` 整份复制**；若克隆根无 `.env`，允许 **`.env.example` → 工作区** 或 **`--seed-env`**（见 **§2.1**、implementation plan）。在此前提下在工作区落下 **§3.4** 初始化树：**`vla_env_contract/`**、**`runtime/webhook/`**、**`tools/dify_upload`**、**`tools/feishu_fetch`**（**实拷贝**，见 workspace-embedded **§3**）、**`prompts/AGENTS.txt` → `AGENTS.md`**、**`prompts/rules/**` → `rules/**`**；**不创建** `.cursor_task/{run_id}/`（由 webhook 运行时创建）。规则正文**不手写第二套**。
 4. **编排说明（代码或文档必选其一，推荐代码打头 + README）**：固定顺序的**生产首启检查表**须与 **§2.1** 推荐流水线一致；**与人验收签字**须以 **`bootstrap interactive-setup`** 为**唯一交互入口**（内部编排下列分步，不得仅交付分立子命令而无该入口）。例如：  
    **（推荐）`.env.example` → `{CLONE_ROOT}/.env`（维护侧种子）** → **各包 install** → **`materialize-workspace`**（种子 → **`{WORKSPACE_ROOT}/.env`** 及 §3.4）→ **编辑 `{WORKSPACE_ROOT}/.env` 填运行密钥** → **`doctor --workspace`** → **（按需）[`feishu-onboard`](../../../onboard/README.md)**（产出 **同步到工作区根 `.env`**）→ **设置 `VLA_WORKSPACE_ROOT`** → **启动 Redis（若尚未）** → **启动 webhook/RQ**。  
    其中 **onboard 一步不得单独构成「布线完成」**（§4、**§4.2**）：**Webhook 不写文件夹、不在运行时创建映射台账**，且 **文件夹路由真源与双重登记债**仍以 **源码与 BugList** 为准。**`materialize-workspace`** 与 **`doctor`** 中与 §3.4/§4 相关的检查 **独立于** onboard 是否自认成功。**文件夹路由与任务的 `dataset_id`/`qa_rule_file` 等运行时以何为真源：** 必须以当前 **`webhook` 实现对 `resolve_folder_route`/`load_routing_config` 的数据源为准**（见 §4、BUG-004/BUG-005）；在未关闭相关缺陷前，`bootstrap`/检查表 **不得暗示**「仅改工作区 `.env` 或仅跑通 onboard 即等价于 JSON 侧已更新」。

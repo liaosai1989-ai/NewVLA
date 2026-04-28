@@ -327,9 +327,9 @@ bootstrap install-workspace-editables --workspace <WS>
 
 以下 **援引** **`production-bootstrap-deployment-design` / `-implementation-plan`** **旧 junction 真源**，**不在**本仓库 **同一次**嵌入 runtime **代码** PR 改正文——避免「文档已改、主干仍 junction」之 **假一致**：
 
-- [ ] **`docs/superpowers/specs/2026-04-28-production-bootstrap-deployment-design.md`**：**§3.4** **删除** **`tools/`** **junction** **策略段**；**新增** **指向** **`2026-04-28-workspace-embedded-runtime-design.md`** **§3** **「实拷贝」** **的单段交叉引用**；**`doctor` 相关表中** **删除** **`junction`** **字样**；
-- [ ] **`docs/superpowers/plans/2026-04-28-production-bootstrap-deployment-implementation-plan.md`**：**文顶** **废止通告**——**junction Task 及架构段** supersede by **`2026-04-28-workspace-embedded-runtime-implementation-plan.md`**；
-- [ ] **`BugList.md` BUG-007`**：**建议** **本 Task** **顺手** **做**：总表「相关链接」**补** **`workspace` implementation plan** **链接**；正文 **补** **一行**——工作区 **`pip`** **四处** **目录** **`vla_env_contract`、`runtime/webhook`、`tools/dify_*`**（**Task 0** **后**）。
+- [x] **`docs/superpowers/specs/2026-04-28-production-bootstrap-deployment-design.md`**：**§3.4** **删除** **`tools/`** **junction** **策略段**；**新增** **指向** **`2026-04-28-workspace-embedded-runtime-design.md`** **§3** **「实拷贝」** **的单段交叉引用**；**`doctor` 相关表中** **删除** **`junction`** **字样**；
+- [x] **`docs/superpowers/plans/2026-04-28-production-bootstrap-deployment-implementation-plan.md`**：**文顶** **废止通告**——**junction Task 及架构段** supersede by **`2026-04-28-workspace-embedded-runtime-implementation-plan.md`**；
+- [x] **`BugList.md` BUG-007`**：**建议** **本 Task** **顺手** **做**：总表「相关链接」**补** **`workspace` implementation plan** **链接**；正文 **补** **一行**——工作区 **`pip`** **四处** **目录** **`vla_env_contract`、`runtime/webhook`、`tools/dify_*`**（**Task 0** **后**）。
 
 ---
 
