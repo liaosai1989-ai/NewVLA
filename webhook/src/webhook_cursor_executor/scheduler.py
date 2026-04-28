@@ -7,6 +7,15 @@ from webhook_cursor_executor.cursor_cli import ensure_max_mode_config, launch_cu
 from webhook_cursor_executor.models import RunContext, RunResult, TaskContext
 from webhook_cursor_executor.task_files import write_task_bundle
 
+PLACEHOLDER_DATASET_IDS = frozenset({"dataset_placeholder_replace_me"})
+
+
+def dataset_id_is_placeholder(dataset_id: str) -> bool:
+    tid = (dataset_id or "").strip()
+    if tid in PLACEHOLDER_DATASET_IDS:
+        return True
+    return tid.lower().startswith("placeholder:")
+
 
 def new_run_id() -> str:
     return f"run_{uuid.uuid4().hex[:12]}"
@@ -82,6 +91,9 @@ def launch_cursor_run_job(
         trigger_source="feishu_webhook",
         received_at=snapshot.received_at,
         cursor_timeout_seconds=snapshot.cursor_timeout_seconds,
+        dify_target_key=snapshot.dify_target_key,
+        ingest_kind=snapshot.ingest_kind,
+        dataset_id_is_placeholder=dataset_id_is_placeholder(snapshot.dataset_id),
     )
     bundle = write_task_bundle(
         workspace_path=Path(snapshot.workspace_path),

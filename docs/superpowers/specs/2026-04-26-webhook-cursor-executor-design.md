@@ -1,6 +1,45 @@
 # Webhook Cursor Executor Design
 
+## 修订说明（2026-04-28 本批次：`.env` 路由与 `ingest_kind`）
+
+- **Folder 路由已合入：** 运行时在 **`FEISHU_FOLDER_ROUTE_KEYS` 非空** 时应自**工作区根 `.env`** 解析各 `FEISHU_FOLDER_<KEY>_*`（含 **`NAME`**，五键同质）；详见 [2026-04-28-task-context-bootstrap-sample-agent-contract-design.md](2026-04-28-task-context-bootstrap-sample-agent-contract-design.md) §7。**`FOLDER_ROUTES_FILE`** 仅在未启用上述索引时作为 **legacy** 回退（与下文 2026-04-27/04-28 各修订说明一致）。
+- **`ingest_kind` 已合入：** HTTP 侧在事件解析与 `folder_token` 路由完成后写入 **`task_context.json`**（及同源快照）；RQ **`launch_cursor_run_job`** 契约携带该字段，**禁止** worker 仅从 `document_id` 反推 ingest 语义。
+- **同 PR 批次**：本条与 `task_context` / bootstrap 合同、[2026-04-26-cloudflare-temp-tunnel-webhook.md](../plans/2026-04-26-cloudflare-temp-tunnel-webhook.md) 文首修订说明、`webhook/操作手册.md` 对齐。
+
 > **落地状态：已落地**（2026-04-28；与仓库 `webhook` 模块及下文各修订说明一致；运行时键名与 PATH 约定以 `webhook/src/webhook_cursor_executor/settings.py` 为准。）
+
+## 修订说明（2026-04-28 task-context-bootstrap spec 为合同真源）
+
+- **单一合同真源**：凡 **folder 路由、`dify_target_key`、`ingest_kind`、Redis 旧快照、薄 Dify 封装、`prompts/AGENTS.txt`、占位闭合** 及 **交付节奏** 与本文历史正文冲突时，以 [2026-04-28-task-context-bootstrap-sample-agent-contract-design.md](2026-04-28-task-context-bootstrap-sample-agent-contract-design.md) **全文**为准。
+- **路由**：生产以工作区根 `.env` 中 **`FEISHU_FOLDER_ROUTE_KEYS`** 及各 **`FEISHU_FOLDER_<KEY>_*`** 为优先（见该 spec §7.1）；**`FOLDER_ROUTES_FILE` JSON** 仅为未配置 ROUTE_KEYS 时之遗留回退并打警告。**单次交付**：该 spec 文首 **「单次交付，禁止拆分」** 优先于他处「分期 / 紧邻 PR」表述。
+- 下方各节修订说明与正文保留供对照；索引 **§7.2–§7.6、§8、§9、§10** 以实现与该 spec 验收清单为准。
+
+## 修订说明（2026-04-28 `ingest_kind` 必填口径与实现链索引）
+
+- **`ingest_kind` 必填**：生产 webhook 路径上与 [2026-04-28-task-context-bootstrap-sample-agent-contract-design.md](2026-04-28-task-context-bootstrap-sample-agent-contract-design.md) **统一**——事件解析与 `folder_token` 路由完成后 **必须** 写入 `task_context.json`（及与之同源的 `DocumentSnapshot`）；执行侧以 JSON 为准。下文「2026-04-28 `task_context` 与 `feishu_fetch` 合约」表格中 `ingest_kind` 行即此口径。
+- **§11 正文**：下方 §11 历史字段表与示例 JSON 保留初版列表；**合同上的完整字段表**须另含 **`dify_target_key`**、**`ingest_kind`（`cloud_docx` \| `drive_file`，必填）** 等，以 task-context-bootstrap **§3** 与文首「2026-04-28 `task_context` 与 `feishu_fetch` 合约」修订表为真源。实现合入后可在 §11 **追加修订说明**块或迁移示例，而非静默覆盖本节之前的历史正文。
+- **规范形态示例（`task_context.json` 片段，供对照）**：
+
+```json
+{
+  "dify_target_key": "DEFAULT",
+  "ingest_kind": "cloud_docx"
+}
+```
+
+- **Redis、测试枚举、遗留路由示例 JSON、onboard 键对齐、CI 手测矩阵**：验收细则见 task-context-bootstrap **§7.6**，避免与本文件双线漂移。
+
+## 修订说明（2026-04-28 `task_context` 与 `feishu_fetch` 合约）
+
+本文件以下正文保留原文，不直接改写原设计内容。下列条款为 **`task_context.json` / 任务单 与 `feishu_fetch` 对齐**的合同真源；**应先改本节与相关实现，再同步** `prompts/AGENTS.txt`、`webhook_cursor_executor/task_files.build_task_prompt`（此前曾有过先改提示词、后补 spec 的顺序倒置，本条起以本修订说明为先）。
+
+| 条目 | 合同 |
+|------|------|
+| **`ingest_kind`** | **生产路径必填。** **由 webhook** 在事件解析、`folder_token` 路由解析等步骤**完成之后**写入 **`task_context.json`**（及同源快照）；取值仅能是 `cloud_docx` 或 `drive_file`，语义对齐 `feishu_fetch.models.FeishuFetchRequest.ingest_kind`。执行侧 Agent **不得**与该字段抵触。 |
+| **`ingest_kind` 落地状态** | **本期**须在 `webhook` 实现 PR 中写入 `TaskContext`／`DocumentSnapshot`／落盘 `task_context.json`（与 `launch_cursor_run_job` 链路一致）；索引 [2026-04-28-task-context-bootstrap-sample-agent-contract-design.md](2026-04-28-task-context-bootstrap-sample-agent-contract-design.md) 文首「本期实现范围」与 §7.2–§7.3。**是否已合并以仓库代码为准**，本文表内合同不随单次会话自称「已落地」。 |
+| **`output_dir`** | **刻意不写入** `task_context.json`。调用 **`feishu_fetch`** 时，构造 **`FeishuFetchRequest`** 的 **`output_dir`** **必须**设为执行工作区根下的 **`.cursor_task/{run_id}/outputs`**（与 `write_task_bundle` 已创建目录一致；**强制**，非推荐），并须满足 `feishu_fetch`「路径落在工作区根内」的校验。 |
+
+与 **§11 机器合同** 字段表的关系：上表为 **§11 既有列表之补充**；待 `ingest_kind`（及修订口径中的 `dify_target_key` 等）实现合入后，**必须**将对应字段并入 §11 字段列表与示例 JSON，并与 [2026-04-28-task-context-bootstrap-sample-agent-contract-design.md](2026-04-28-task-context-bootstrap-sample-agent-contract-design.md) §3 对齐。
 
 ## 修订说明（2026-04-27 Cursor CLI 可执行：仅 PATH、废弃 `CURSOR_CLI_COMMAND`）
 

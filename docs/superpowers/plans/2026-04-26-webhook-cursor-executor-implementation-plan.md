@@ -2,6 +2,12 @@
 
 > **落地状态：已落地**（2026-04-28；实现见 `webhook/src/webhook_cursor_executor/`；运维与升级口径见 `webhook/操作手册.md`；文首修订说明与 `BugList.md` BUG-001 为差异真源。）
 
+## 修订说明（2026-04-28 `ingest_kind` 与 task-context 合同）
+
+- **合同真源**：凡 **字段表、`dify_target_key`、`ingest_kind`、folder 路由（`.env` 优先 / JSON 回退）、Redis 旧快照、单次交付边界** 与本文旧表述冲突时，以 [2026-04-28-task-context-bootstrap-sample-agent-contract-design.md](../specs/2026-04-28-task-context-bootstrap-sample-agent-contract-design.md) **全文**为准；文首 **「单次交付，禁止拆分」** 覆盖任何「可拆 PR」「紧邻 PR」类旧措辞。
+- **`ingest_kind` 写入 `DocumentSnapshot` / `TaskContext` / 落盘 `task_context.json`** 属该 spec 文首交付范围（§7.2–§7.6）；与 [2026-04-28-production-bootstrap-deployment-implementation-plan.md](2026-04-28-production-bootstrap-deployment-implementation-plan.md) 文首「task-context / feishu_fetch 合同同期交付」**同验收窗口**。**本 plan 正文**若仍描述旧字段表，以 **task-context-bootstrap spec §3** 为字段真源。
+- 本条 **不撤回** 本 plan 已落地的 Cursor PATH、验签等结论；仅追加 **合同字段与批次** 索引。
+
 ## 修订说明（2026-04-27 `cursor` 仅 PATH、正文代码片段中 `CURSOR_CLI_COMMAND` 已过时）
 
 本 plan 以下正文**保留原文**，不整段替换。正文中若出现 `cursor_cli_command` / `CURSOR_CLI_COMMAND`、或 `launch_cursor_agent(..., command=settings.cursor_cli_command)` 等，均视为**历史草稿**，与**当前仓库实现**不一致。

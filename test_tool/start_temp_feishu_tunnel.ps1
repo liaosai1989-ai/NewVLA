@@ -201,6 +201,8 @@ if (-not $cloudflaredExe) {
 $pythonExe = Get-PythonExe
 $venvPython = Ensure-Venv -WebhookRoot $webhookRoot -PythonExe $pythonExe
 
+# Folder 路由首选执行工作区根 .env：`FEISHU_FOLDER_ROUTE_KEYS` + 每组 `FEISHU_FOLDER_<KEY>_*`（含 NAME，五键）。
+# Legacy：`FEISHU_FOLDER_ROUTE_KEYS` 留空时使用 `FOLDER_ROUTES_FILE` JSON；下方为该键注入占位，勿当作生产真源优先级。
 $settingsJson = & $venvPython -c "from webhook_cursor_executor.settings import get_executor_settings; import json; s=get_executor_settings(); print(json.dumps({'path': s.feishu_webhook_path, 'routes_file': s.folder_routes_file, 'verification_token': s.feishu_verification_token}, ensure_ascii=False))"
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to read webhook settings."

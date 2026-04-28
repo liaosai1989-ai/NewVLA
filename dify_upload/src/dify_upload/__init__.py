@@ -1,4 +1,5 @@
 from .config import DifyTargetConfig
+from .resolve_target import resolve_dify_target
 from .upload import (
     DifyConfigError,
     DifyRequestError,
@@ -16,4 +17,5 @@ __all__ = [
     "DifyConfigError",
     "DifyRequestError",
     "DifyResponseError",
+    "resolve_dify_target",
 ]

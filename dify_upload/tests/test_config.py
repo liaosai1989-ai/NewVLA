@@ -7,6 +7,7 @@ from dify_upload import (
     DifyTargetConfig as ExportedDifyTargetConfig,
     DifyUploadError,
     UploadResult,
+    resolve_dify_target,
     upload_csv_to_dify,
 )
 from dify_upload.config import DifyTargetConfig
@@ -75,6 +76,7 @@ def test_target_config_normalizes_api_base_and_rejects_invalid_fields():
 def test_package_root_exports_stable_public_api():
     assert ExportedDifyTargetConfig.__name__ == "DifyTargetConfig"
     assert UploadResult.__name__ == "UploadResult"
+    assert resolve_dify_target.__name__ == "resolve_dify_target"
     assert upload_csv_to_dify.__name__ == "upload_csv_to_dify"
     assert issubclass(ExportedDifyConfigError, DifyUploadError)
     assert issubclass(DifyRequestError, DifyUploadError)

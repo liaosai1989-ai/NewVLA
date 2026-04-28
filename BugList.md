@@ -46,8 +46,8 @@
 | BUG-001 | 可执行文件依赖应统一为 PATH+标准解析，需全仓审计历史旁路 | P2 | 已确认 | 2026-04-27 | `onboard/README.md`、`onboard/.../lark_cli.py`、`feishu_fetch/.../facade.py`、`webhook/.../cursor_cli.py`/`settings.py`、`webhook/操作手册` 升级节、`docs/superpowers/specs/2026-04-26-webhook-cursor-executor-design.md` 修订 2026-04-27 | `webhook` 已：固定 `cursor`+`which`、禁 `CURSOR_CLI_COMMAND`；`feishu_fetch`/`onboard` 同前；**全仓**余模块审计关单仍待 |
 | BUG-002 | 入轨 `POST .../permissions/.../members?type=folder` 在联调子命令可成功时仍 400/失败，属表现差异需收敛 | P1 | 已关闭 | 2026-04-27 | `onboard/src/feishu_onboard/flow.py`、`onboard/src/feishu_onboard/feishu_client.py` | 关闭：根因为 `.env` 中委托人 `open_id` 抄录少一位 → 1063001；修正后加协作者成功 |
 | BUG-003 | `lark-cli config show` 误传 `--json`，与 @larksuite/cli 1.0.19 不符，致校验子进程退出码 1 | P1 | 已修复 | 2026-04-27 | `onboard/src/feishu_onboard/lark_cli.py`、`feishu_fetch/src/feishu_fetch/facade.py` | 改为 `config show`；`onboard`/`feishu_fetch` 单测与真机入轨可验 |
-| BUG-004 | `feishu-onboard` 与 webhook 对同一路线双重登记 `qa_rule_file`/`dataset_id`，v1 运行时只消费 JSON 侧字段，易与根 `.env` 展示脱节 | P2 | 已确认 | 2026-04-27 | `webhook/操作手册.md` 第四步、`onboard/flow.py` | 真源约定冲突见 **BUG-005**；绕过：两处手工对齐 |
-| BUG-005 | webhook 以 `FOLDER_ROUTES_FILE` JSON 为 folder 路由运行时来源，违反本仓「根 `.env` 唯一真源」约定（与 onboard / 其余模块不一致） | P1 | 已确认 | 2026-04-27 | `.cursor/rules/env.mdc`、`webhook/src/webhook_cursor_executor/settings.py`、`docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | 修复方向：路由从 `.env` 的 `FEISHU_FOLDER_*` + 索引键解析；JSON 仅示例或派生产物 |
+| BUG-004 | `feishu-onboard` 与 webhook 对同一路线双重登记 `qa_rule_file`/`dataset_id`，v1 运行时只消费 JSON 侧字段，易与根 `.env` 展示脱节 | P2 | 已关闭 | 2026-04-27 | `webhook/操作手册.md`、`onboard/flow.py` | 关闭：webhook **`FEISHU_FOLDER_ROUTE_KEYS`** 与各 **`FEISHU_FOLDER_<KEY>_*`** 为运行时 mapping 真源，与 onboard 对齐；见 BUG-005 同源修复 |
+| BUG-005 | webhook 以 `FOLDER_ROUTES_FILE` JSON 为 folder 路由运行时来源，违反本仓「根 `.env` 唯一真源」约定（与 onboard / 其余模块不一致） | P1 | 已关闭 | 2026-04-27 | `.cursor/rules/env.mdc`、`webhook/.../settings.py` `load_routing_config` | 关闭：**`FEISHU_FOLDER_ROUTE_KEYS` 非空**时从工作区 `.env` 构造路由；JSON legacy + 告警；RQ/`ingest_kind` 见 task-context spec |
 | BUG-006 | `feishu-onboard` 建应用文件夹后**未**调用飞书「夹级事件订阅」OpenAPI，缺 `file.created_in_folder_v1` 等前提，与同应用下能稳定收 `drive.file.edit_v1` 的栈（如含 subscribe 流程）表现不一致 | P1 | 已修复 | 2026-04-27 | `onboard/.../feishu_client.py` `subscribe_folder_file_created`、`flow.py` 建夹/已有 token 后协作者前调用 | 补订后同参考脚本；**勿**在 onboard 里枚举旧 docx；线上飞书需待验证 |
 
 ## 正文记录
@@ -142,7 +142,7 @@
 ## BUG-004 `feishu-onboard` 与 webhook 对同一路线双重登记 `qa_rule_file`/`dataset_id`，运行时仅 JSON 生效，易与根 `.env` 脱节
 
 - 发现时间：2026-04-27
-- 当前状态：已确认
+- 当前状态：已关闭
 - 严重级别：P2
 - 环境/复现：完成 `feishu-onboard` 入轨后根 `.env` 含 `FEISHU_FOLDER_<KEY>_QA_RULE_FILE`、`..._DATASET_ID`、`..._TOKEN`；webhook 进程读 `FOLDER_ROUTES_FILE` 指向的 JSON（`folder_routes[]`），不读取上述 `.env` 键。
 - 现象：运维只改 `.env` 或只改 JSON 一侧时，线上注入与「应在 `.env` 里看到的真值」不一致；人若以 `.env` 为准会误判（**与 BUG-005 同根：v1 实现未以 `.env` 为路由真源**）。
@@ -155,16 +155,16 @@
 
 ### 修复说明（有则填）
 
-- 
+- **2026-04-28：** `webhook_cursor_executor.settings.load_routing_config`：**`FEISHU_FOLDER_ROUTE_KEYS` 非空**则从工作区 `.env` 推导 `folder_routes`，与 **`onboard`/五键同质**（含 `NAME`）。不再要求运维为同一路线同时在 JSON「再维护一套」作为主真源。**关单连带 BUG-005。**
 
 ### 验证（关闭前填）
 
-- 
+- `cd webhook`; `pytest` 通过；启用 `.env` 路由后单次任务 `task_context.json` 与 `.env` 中该 route **一致**。手册见 `webhook/操作手册.md` 第四步（首选）。
 
 ## BUG-005 webhook 以 `FOLDER_ROUTES_FILE` JSON 为 folder 路由运行时来源，违反本仓「根 `.env` 唯一真源」约定
 
 - 发现时间：2026-04-27
-- 当前状态：已确认
+- 当前状态：已关闭
 - 严重级别：P1
 - 环境/复现：仓库规则 `.cursor/rules/env.mdc`、根 `AGENTS.md` 均约定**项目根 `.env` 为唯一真源**；`onboard`、`feishu_fetch`、`dify_upload` 等按该约定从 `.env` 取业务配置。运行 `webhook_cursor_executor` 时，`resolve_folder_route` 使用的 `folder_routes` 来自 `load_routing_config` → **仅读取 JSON 文件**，不解析 `FEISHU_FOLDER_<KEY>_*`。
 - 现象：文档/手册若写「.env 台账、JSON 真源」会把**错误语义**合理化；实际与全仓约定相反——**应以 `.env` 为真源**，当前实现是例外债。
@@ -179,9 +179,9 @@
 
 ### 修复说明（有则填）
 
-- 
+- **2026-04-28：** 生产路径 **`FEISHU_FOLDER_ROUTE_KEYS` + `FEISHU_FOLDER_<KEY>_*`**；**仅当 ROUTE_KEYS 未配置**时回退 **`FOLDER_ROUTES_FILE`** 并告警。与 **[2026-04-28-task-context-bootstrap-sample-agent-contract-design.md](docs/superpowers/specs/2026-04-28-task-context-bootstrap-sample-agent-contract-design.md)** §7、[2026-04-26-webhook-cursor-executor-design.md](docs/superpowers/specs/2026-04-26-webhook-cursor-executor-design.md) 文首本批次修订说明一致；HTTP/RQ **`ingest_kind`** 显式写入 `task_context.json`。
 
 ### 验证（关闭前填）
 
-- 
+- `cd webhook`; `pytest` 全绿；根 `.env` 配齐 **ROUTE_KEYS** 与两段 route **五键** 后，不因 JSON 漂移而改变命中（可无 JSON 或占位）。legacy 单列测 / 告警行为以 `tests/test_settings.py` 为准。
 

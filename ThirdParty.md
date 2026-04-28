@@ -2,6 +2,8 @@
 
 依据仓库内 `**/pyproject.toml` 与源码实际调用整理：**PyPI 包**、**可选/运行时补充**、**外部二进制与服务**、**远端 API**。
 
+**可能与实现不完全同步**：本文为维护性汇总，**可能有疏漏或滞后**。**权威优先级**：各子目录 `pyproject.toml`声明、源码中的 `import` / `subprocess` 调用与实际运行路径。**生产自检（如 `bootstrap doctor`）** 以 **`docs/superpowers/specs/2026-04-28-production-bootstrap-deployment-design.md`**（及最终实现）中对仓库的扫描结论为准，**非机械照抄**本表；二者冲突时先信 **源码与 spec**，再修本文。
+
 ---
 
 ## 1. Python 包（`pyproject.toml` 声明）
@@ -16,6 +18,7 @@
 | `rq` | 异步任务队列 |
 | `pydantic` / `pydantic-settings` | 配置与数据模型 |
 | `pycryptodome` | 飞书事件体 AES 解密 |
+| `python-dotenv` | 加载执行工作区 `.env`（与 `ExecutorSettings` / 文件夹路由解析一致） |
 
 **测试可选**：`pytest`、`fakeredis`、`httpx`。
 
@@ -38,7 +41,7 @@
 ### `feishu_fetch/` — `feishu-fetch`
 
 - **主依赖列表为空**（仅标准库 + 子进程调 `lark-cli`）。
-- **按文件类型可选**：`feishu_fetch` 对云空间 `drive_file` 若本地落盘后缀属于 **`MARKITDOWN_SUFFIXES`（与源码一致，共 7 类：`.doc`、`.docx`、`.ppt`、`.pptx`、`.xls`、`.xlsx`、`.pdf`）**，下载/导出后会 **`import markitdown`** 转成 Markdown 文本；**`.doc` 与 `.docx` 都要**，不是「只有 pdf」。未安装则报错。**建议**在同一 Python 环境 `pip install markitdown`；若业务只碰直读白名单格式则可不装。
+- **按文件类型可选**：`feishu_fetch` 对云空间 `drive_file` 若本地落盘后缀属于 **`MARKITDOWN_SUFFIXES`（与源码一致，共 7 类：`.doc`、`.docx`、`.ppt`、`.pptx`、`.xls`、`.xlsx`、`.pdf`）**，下载/导出后会 **`import markitdown`** 转成 Markdown 文本；**`.doc` 与 `.docx` 都要**，不是「只有 pdf」。未安装则报错。安装：同一 Python 环境 **`pip install markitdown`**（以下「建议安装」口吻指**不写进声明式 `dependencies`** 的包；**生产机 `bootstrap doctor` 自检见** `docs/superpowers/specs/2026-04-28-production-bootstrap-deployment-design.md` §5.1——该处已定 **自检必须可 import**。若业务只碰直读白名单格式，开发机可暂不装，`doctor` 行为以实现为准）。
 
 ### Markdown 相关说明
 

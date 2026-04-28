@@ -1,10 +1,21 @@
 ---
-description: Plan/Spec 文档编辑规范：落地状态回写、未落地直接改正文、已落地保留原文并在顶部追加修订说明
+description: Plan/Spec 文档编辑规范：新建前交叉 BugList/NiceToHave、落地状态回写、未落地直接改正文、已落地保留原文并在顶部追加修订说明
 globs: docs/superpowers/**/*.md
 alwaysApply: false
 ---
 
 # Plan 与 Spec 文档编辑
+
+## 新建 Spec / Plan
+
+起草**新的** design spec 或 implementation plan 前：
+
+1. **审阅** 仓库根目录 `BugList.md`（**Bug 总表** + 与主题相关的正文条目）与 `NiceToHave.md`（**待优化点总表** + 与主题相关的正文条目）。
+2. **命中**指：同一模块/合同/链路、同一根因或现象、或 NiceToHave 条目已指向同级能力；总表里 `相关链接` / `spec 索引` / `plan 索引` 已出现邻近主题也算强信号。
+3. 若有命中，须在**本稿中一并涵盖**（不可静默忽略）：
+   - 在正文适当位置（或文首落地状态块、范围/非目标节）**显式引用** `BUG-xxx`、`NTH-xxx`；
+   - 写清本稿是否**关闭**该缺陷/缺口、是否**纳入**该待优化点的验收，或**刻意排除**的范围及原因；
+   - 避免新 spec/plan 与已登记问题、待优化点**割裂**。
 
 ## 落地后回写状态
 

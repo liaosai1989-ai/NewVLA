@@ -54,6 +54,7 @@ def test_ingest_resolves_listing_marks_snapshot_schedules():
                     document_id="doc1",
                     event_type="drive.file.edit_v1",
                     folder_token="",
+                    ingest_kind="drive_file",
                 )
     assert store.try_mark_event_seen("ev1") is False
     assert cap.calls[0][0] == "schedule_document_job"
@@ -61,6 +62,8 @@ def test_ingest_resolves_listing_marks_snapshot_schedules():
     sn = store.load_snapshot("doc1")
     assert sn is not None
     assert sn.folder_token == "fld_team_a"
+    assert sn.ingest_kind == "drive_file"
+    assert sn.dify_target_key == "DEFAULT"
 
 
 def test_ingest_duplicate_event_skips_second_schedule():
@@ -95,12 +98,14 @@ def test_ingest_duplicate_event_skips_second_schedule():
                     document_id="d1",
                     event_type="t",
                     folder_token="",
+                    ingest_kind="drive_file",
                 )
                 ingest_feishu_document_event_entry(
                     event_id="dup1",
                     document_id="d1",
                     event_type="t",
                     folder_token="",
+                    ingest_kind="drive_file",
                 )
     sched = [c for c in cap.calls if c[0] == "schedule_document_job"]
     assert sched == [("schedule_document_job", {"document_id": "d1", "version": 1})]

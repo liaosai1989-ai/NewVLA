@@ -52,6 +52,7 @@
 | NTH-005 | 飞书文件夹-Dify 知识库-QA 合同一对一映射收口 | P1 | 已出 spec | 2026-04-26 | `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` | - | 已明确 `folder_token` 必须一对一命中 `dify_target_key`、`dataset_id` 与 `qa_rule_file`，Agent 不负责推断 |
 | NTH-006 | 飞书 App 文件夹创建与权限初始化工具 | P1 | 已实现 | 2026-04-26 | `docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md` | `docs/superpowers/plans/2026-04-27-feishu-app-folder-onboard-implementation-plan.md` | 根目录 `onboard/` 已提供 `feishu-onboard` 包与单测、README，按 spec/plan 两阶段写根 `.env` 与 lark 初始化，详见正文 |
 | NTH-007 | 管线执行工作区物理目录初始化（与入轨解耦） | P2 | 待评估 | 2026-04-27 | - | - | **生产不在维护仓目录跑任务**，而在**专门初始化的执行工作区**；`feishu_fetch`/手册「项目根」易与维护仓 clone 重合，须与 RQ 真实 cwd 区分并桥接（见正文） |
+| NTH-008 | bootstrap 收尾增加配置与服务探活环节 | P2 | 待评估 | 2026-04-28 | `docs/superpowers/specs/2026-04-28-production-bootstrap-deployment-design.md` | `docs/superpowers/plans/2026-04-28-production-bootstrap-deployment-implementation-plan.md` | 在现有 `doctor` 之后扩展：关键合同键、Redis、可选外联（Dify/飞书等）分级探活；交互编排末尾串联 |
 
 ## 正文记录
 
@@ -346,3 +347,38 @@
 - 能向操作者说清：入轨成功 ≠ 已创建独立生产工作区目录；若需要后者，有明确入口或文档步骤。
 - 能向操作者说清：**正式跑抓取时的 workspace 根** 可以与 **跑 `feishu-onboard` 写 `.env` 的目录** 不同，但必须用约定方式对齐（同源配置或显式 `FEISHU_FETCH_ENV_FILE` 等），否则属于部署/初始化断链而非模块 bug。
 - 若实现方案二，有最小验收（目录结构、`AGENTS`/`rules` 来源、不泄露密钥）。
+
+## NTH-008 bootstrap 收尾增加配置与服务探活环节
+
+- 提出时间：2026-04-28
+- 当前状态：待评估
+- 优先级：P2
+- 背景/问题：
+  - 当前 **`bootstrap doctor`** 已覆盖 Python 版本、PATH 工具、`markitdown`、四包可导入、工作区 `.env`、可选 Redis ping、路由 JSON 漂移 WARNING 等（见 plan Task 9）。
+  - **缺口：** 投产前常还需确认 **合同配置完整性**（必填键是否存在/非占位）、**依赖服务真实可达**（不仅进程已起），以及可选的 **Dify API、飞书网关、RQ 队列** 等——与「本机 CLI/包存在」不同维度；若全靠人工对照 `操作手册`，易遗漏。
+- 目标：
+  - 在 bootstrap **人机验收链末端**（`interactive-setup` 及/或独立子命令）增加 **「探活」环节**：在 **`doctor` 现有检查之后**（或与之分层），汇总 **配置探针 + 服务探针**，退出码与输出可区分「硬失败 / 软警告 / 跳过项未配置」。
+  - 与 **`doctor` 边界**：避免重复逻辑可复用模块；探活范围可分级（例如 P0：`.env` 键门禁 + Redis；P1：HTTP  ping 外联，需显式 `--probe-external` 或环境开关防误触生产）。
+- 预期收益：
+  - 缩短「配置以为齐了其实外联不通」的排障时间。
+  - 与 NTH-007 所述执行工作区物理落盘互补：目录有了 + **可达性**一眼可见。
+- 影响范围：
+  - `bootstrap/`（新模块或扩展 `doctor.py` / `cli`）
+  - `bootstrap/README.md`、与 `webhook/操作手册.md` 交叉引用
+- spec 索引：`docs/superpowers/specs/2026-04-28-production-bootstrap-deployment-design.md`
+- plan 索引：`docs/superpowers/plans/2026-04-28-production-bootstrap-deployment-implementation-plan.md`
+- 备注：
+  - 用户口头登记：**bootstrap 最后要加一个环节**，专门做 **所有配置和服务的探活**；本条据此建档。
+  - **不实现在本条登记时完成**；待评审后写入 spec/plan 修订或独立补充小节。
+
+### 方案草案
+
+- 列出候选探针矩阵：`REDIS_URL`、`FOLDER_ROUTES_FILE` 可读性、`DIFY_TARGET_*` 组完整性（若合同要求）、可选 `curl`/httpx 探 Dify base、飞书 token 探针（慎用额度）。
+- `interactive-setup` 末尾：`doctor` → **`bootstrap probe-all`**（名称待定）或合并进 doctor `--deep`.
+- CI：默认跳过需密钥的外联探针，或与 `-SkipDoctor` 同级 **`SkipProbe`**。
+
+### 验收标准
+
+- 文档写明探活范围与与人机签字路径的关系（非替代签字，仅增强）。
+- 无密钥时不强行调用生产 API；缺失依赖时跳过项清晰 stderr 标注。
+- 与现有 Task 14 闸门脚本兼容或可追加可选一步。

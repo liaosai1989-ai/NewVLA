@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "run_id": "bootstrap-sample-run",
+  "event_id": "evt_bootstrap_sample",
+  "document_id": "doc_bootstrap_sample",
+  "folder_token": "fld_placeholder_token",
+  "event_type": "drive.file.edit_v1",
+  "snapshot_version": 1,
+  "qa_rule_file": "rules/sample_qa.md",
+  "dataset_id": "placeholder_dataset_id_for_demo_only",
+  "workspace_path": "C:/VLA_Workplace",
+  "trigger_source": "bootstrap_sample",
+  "received_at": "2026-04-28T12:00:00+00:00",
+  "cursor_timeout_seconds": 7200,
+  "dify_target_key": "DEFAULT",
+  "ingest_kind": "drive_file",
+  "dataset_id_is_placeholder": true
+}

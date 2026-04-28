@@ -74,7 +74,7 @@ def test_upload_posts_fixed_contract_and_returns_structured_result(tmp_path, mon
     assert StaticClient.last_init == {
         "verify": False,
         "timeout": 12.5,
-        "follow_redirects": False,
+        "follow_redirects": True,
     }
     assert StaticClient.last_post["url"] == (
         "https://dify.example.com/v1/datasets/dataset-123/document/create-by-file"

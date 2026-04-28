@@ -1,5 +1,9 @@
 # Cloudflare Temp Tunnel Webhook Implementation Plan
 
+## 修订说明
+
+- **2026-04-28（联动 task-context / webhook §7）：** 本地与飞书联调时，**生产路径** folder 路由真源为 **工作区根 `.env`** 内 `FEISHU_FOLDER_ROUTE_KEYS` 与各 `FEISHU_FOLDER_<KEY>_*`（含 `NAME`，与 `onboard/env_contract` 一致）；`FOLDER_ROUTES_FILE` JSON **仅** legacy 回退。脚本 `test_tool/start_temp_feishu_tunnel.ps1` 及本文操作说明若仍只写 JSON 路由，须与 [2026-04-28-task-context-bootstrap-sample-agent-contract-implementation-plan.md](./2026-04-28-task-context-bootstrap-sample-agent-contract-implementation-plan.md) Task 7 同批对齐。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在 `c:\WorkPlace\NewVLA\test_tool` 生成一套最小联调脚本，安装 `cloudflared` 并把现有本地 `webhook` 服务暴露成临时公网 URL，供飞书事件订阅和 callback 测试。

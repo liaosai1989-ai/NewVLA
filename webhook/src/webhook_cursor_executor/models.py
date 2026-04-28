@@ -14,6 +14,8 @@ class DocumentSnapshot(BaseModel):
     cursor_timeout_seconds: int
     received_at: str
     version: int
+    dify_target_key: str = "DEFAULT"
+    ingest_kind: str
 
 
 class RerunMarker(BaseModel):
@@ -54,3 +56,6 @@ class TaskContext(BaseModel):
     trigger_source: str
     received_at: str
     cursor_timeout_seconds: int
+    dify_target_key: str
+    ingest_kind: str
+    dataset_id_is_placeholder: bool = False

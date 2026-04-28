@@ -1,7 +1,9 @@
 from webhook_cursor_executor.feishu_folder_resolve import (
     _feishu_api_ok,
     _file_token_in_list,
+    resolve_folder_route,
 )
+from webhook_cursor_executor.settings import FolderRoute, PipelineWorkspace, RoutingConfig
 
 
 def test_feishu_api_ok_treats_zero_as_success():
@@ -45,3 +47,37 @@ def test_file_token_in_list_matches_shortcut_target_token():
     assert _file_token_in_list(payload, "Rz5EdOgg1oQzeSx2o05cLRfTnrh")
     # 列表行自身 token（快捷方式壳）仍可命中，与事件若带壳 token 一致
     assert _file_token_in_list(payload, "nod_shortcut_wrapper")
+
+
+def test_resolve_folder_route_returns_dify_target_key_from_config():
+    cfg = RoutingConfig(
+        pipeline_workspace=PipelineWorkspace(path="C:\\ws", cursor_timeout_seconds=3600),
+        folder_routes=[
+            FolderRoute(
+                folder_token="ft_route_a",
+                qa_rule_file="rules/q.md",
+                dataset_id="ds1",
+                dify_target_key="PROD_A",
+            )
+        ],
+    )
+    hit = resolve_folder_route(cfg, "ft_route_a")
+    assert hit is not None
+    assert hit.dify_target_key == "PROD_A"
+    assert hit.folder_token == "ft_route_a"
+
+
+def test_resolve_folder_route_default_dify_target_key_when_omitted():
+    cfg = RoutingConfig(
+        pipeline_workspace=PipelineWorkspace(path="C:\\ws", cursor_timeout_seconds=3600),
+        folder_routes=[
+            FolderRoute(
+                folder_token="ft_b",
+                qa_rule_file="rules/q.md",
+                dataset_id="ds1",
+            )
+        ],
+    )
+    hit = resolve_folder_route(cfg, "ft_b")
+    assert hit is not None
+    assert hit.dify_target_key == "DEFAULT"

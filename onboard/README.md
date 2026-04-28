@@ -18,7 +18,7 @@ python -m venv .venv
 
 ### 0. 弄清「根目录」指哪里
 
-- 工具会读写**管线维护仓库根目录**下的 `.env`：默认取 `feishu-onboard` 包在磁盘上的位置向上推算（editable 安装时即本仓库 `NewVLA` 根目录）。
+- 工具会读写**管线维护仓库根目录**下的 `.env`：默认取 `feishu-onboard` 包在磁盘上的位置向上推算（editable 安装时即本仓库 `NewVLA` 根目录）。**管线运行时合同真源为「执行工作区根」`.env`**（由 `bootstrap materialize-workspace` 物化）；onboard 写维护仓根后须按 **`bootstrap/README.md`** 交接清单 **合并或复制** 进工作区 `.env`，勿误以为只改维护仓根即完成运行配置。
 - 若用 **非 editable** 安装（包在 `site-packages`），在运行前必须在**同一会话**里设置环境变量：
   - `FEISHU_ONBOARD_REPO_ROOT` = 管线仓根的**绝对路径**（例：`C:\Cursor WorkSpace\NewVLA`）。
 

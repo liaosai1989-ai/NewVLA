@@ -13,7 +13,9 @@ dependencies = [
   "pydantic>=2.11,<3.0",
   "pydantic-settings>=2.9,<3.0",
   "pycryptodome>=3.21,<4.0",
-  "uvicorn>=0.34,<1.0"
+  "python-dotenv>=1.0,<2.0",
+  "uvicorn>=0.34,<1.0",
+  "feishu-onboard @ file:../onboard"
 ]
 
 [project.optional-dependencies]
@@ -24,5 +26,5 @@ test = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "../onboard/src"]
 testpaths = ["tests"]

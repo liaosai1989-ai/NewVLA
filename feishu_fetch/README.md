@@ -8,6 +8,7 @@
 
 - 只接收结构化 `FeishuFetchRequest`
 - 不解析 webhook 事件
+- **管线合同**：生产路径上 **`ingest_kind` 唯一真源**为当次任务 **`task_context.json`**（webhook 写入工作区 `.cursor_task/{run_id}/`，**必填**，见 `docs/superpowers/specs/2026-04-28-task-context-bootstrap-sample-agent-contract-design.md` §2.2、§3）；构造 `FeishuFetchRequest` 时 **`ingest_kind` 必须与 JSON 完全一致**，禁止用 `event_type`、规则文件或惯例顶替
 - 不从 URL 猜参数
 - 不自动安装 `lark-cli`、不代替交互式登录
 - 只支持 spec 明确列出的 v1 抓取路径
