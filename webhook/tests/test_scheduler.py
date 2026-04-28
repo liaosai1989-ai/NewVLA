@@ -4,6 +4,7 @@ from fakeredis import FakeStrictRedis
 
 from webhook_cursor_executor.models import DocumentSnapshot
 from webhook_cursor_executor.scheduler import (
+    dataset_id_is_placeholder,
     finalize_document_run_job,
     launch_cursor_run_job,
     schedule_document_job,
@@ -20,6 +21,12 @@ class FakeQueue:
         self.calls.append((job_name, kwargs))
 
 
+def test_dataset_id_is_placeholder_known_ids_and_prefix():
+    assert dataset_id_is_placeholder("dataset_placeholder_replace_me")
+    assert dataset_id_is_placeholder("placeholder:demo")
+    assert not dataset_id_is_placeholder("8aa735a4-f8fc-46c8-9620-c8df159ddc8e")
+
+
 def test_schedule_marks_rerun_when_busy():
     store = RedisStateStore(redis_client=FakeStrictRedis(decode_responses=True))
     queue = FakeQueue()
@@ -34,6 +41,7 @@ def test_schedule_marks_rerun_when_busy():
         cursor_timeout_seconds=7200,
         received_at="2026-04-26T10:00:00Z",
         version=2,
+        ingest_kind="drive_file",
     )
     store.save_snapshot(snapshot)
     store.try_acquire_runlock(
@@ -68,6 +76,7 @@ def test_finalize_saves_result_and_requeues_newer_version():
         cursor_timeout_seconds=7200,
         received_at="2026-04-26T10:00:00Z",
         version=6,
+        ingest_kind="drive_file",
     )
     store.save_snapshot(snapshot)
     store.mark_rerun(document_id="doc_1", target_version=6)
@@ -101,6 +110,7 @@ def test_launch_fails_fast_when_max_mode_sync_fails(monkeypatch, tmp_path):
         cursor_timeout_seconds=300,
         received_at="2026-04-26T10:00:00Z",
         version=1,
+        ingest_kind="drive_file",
     )
     store.save_snapshot(snapshot)
     store.try_acquire_runlock(
@@ -144,6 +154,8 @@ def test_launch_uses_workspace_timeout_in_task_context(monkeypatch, tmp_path):
         cursor_timeout_seconds=321,
         received_at="2026-04-26T10:00:00Z",
         version=1,
+        ingest_kind="drive_file",
+        dify_target_key="CUSTOM",
     )
     store.save_snapshot(snapshot)
     store.try_acquire_runlock(
@@ -189,3 +201,60 @@ def test_launch_uses_workspace_timeout_in_task_context(monkeypatch, tmp_path):
 
     assert captured["timeout_seconds"] == 321
     assert saved_context["cursor_timeout_seconds"] == 321
+    assert saved_context["ingest_kind"] == "drive_file"
+    assert saved_context["dify_target_key"] == "CUSTOM"
+    assert saved_context["dataset_id_is_placeholder"] is False
+
+
+def test_launch_task_context_placeholder_dataset(monkeypatch, tmp_path):
+    store = RedisStateStore(redis_client=FakeStrictRedis(decode_responses=True))
+    queue = FakeQueue()
+    snapshot = DocumentSnapshot(
+        event_id="evt_1",
+        document_id="doc_ph",
+        folder_token="fld_team_a",
+        event_type="drive.file.updated_v1",
+        qa_rule_file="rules/team_a_qa.md",
+        dataset_id="dataset_placeholder_replace_me",
+        workspace_path=str(tmp_path),
+        cursor_timeout_seconds=120,
+        received_at="2026-04-26T10:00:00Z",
+        version=1,
+        ingest_kind="drive_file",
+    )
+    store.save_snapshot(snapshot)
+    store.try_acquire_runlock(
+        document_id="doc_ph",
+        run_id="run_ph",
+        ttl_seconds=10800,
+    )
+    settings = ExecutorSettings(
+        cursor_cli_config_path=str(tmp_path / "cli-config.json"),
+        cursor_run_timeout_seconds=7200,
+    )
+    monkeypatch.setattr(
+        "webhook_cursor_executor.scheduler.ensure_max_mode_config",
+        lambda **_: None,
+    )
+    monkeypatch.setattr(
+        "webhook_cursor_executor.scheduler.launch_cursor_agent",
+        lambda **_: type(
+            "R",
+            (),
+            {"exit_code": 0, "status": "succeeded", "summary": "ok"},
+        )(),
+    )
+    launch_cursor_run_job(
+        document_id="doc_ph",
+        version=1,
+        run_id="run_ph",
+        state_store=store,
+        queue=queue,
+        settings=settings,
+    )
+    ctx = json.loads(
+        (tmp_path / ".cursor_task" / "run_ph" / "task_context.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert ctx["dataset_id_is_placeholder"] is True

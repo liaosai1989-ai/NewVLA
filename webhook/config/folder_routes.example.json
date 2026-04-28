@@ -7,7 +7,14 @@
     {
       "folder_token": "ByvwfE7O2lREj4dW7C8cI8WJnxg",
       "qa_rule_file": "prompts/rules/qa/folders/folder_rule_template.mdc",
-      "dataset_id": "8aa735a4-f8fc-46c8-9620-c8df159ddc8e"
+      "dataset_id": "8aa735a4-f8fc-46c8-9620-c8df159ddc8e",
+      "dify_target_key": "DEFAULT"
+    },
+    {
+      "folder_token": "ExAmPlEfOlDeRtOkEn000000000000",
+      "qa_rule_file": "prompts/rules/qa/folders/second_folder.mdc",
+      "dataset_id": "11111111-1111-4111-8111-111111111111",
+      "dify_target_key": "SECOND"
     }
   ]
 }

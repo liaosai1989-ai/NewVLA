@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from redis import Redis
 from rq import Queue
 
+from webhook_cursor_executor.ingest_kind import derive_ingest_kind
 from webhook_cursor_executor.models import DocumentSnapshot
 from webhook_cursor_executor.settings import (
     ExecutorSettings,
@@ -116,8 +117,8 @@ def create_app(
         ):
             return JSONResponse({"error": "invalid signature"}, status_code=401)
 
-        header = payload.get("header") or {}
-        event = payload.get("event") or {}
+        header = payload.get("header") if isinstance(payload.get("header"), dict) else {}
+        event = payload.get("event") if isinstance(payload.get("event"), dict) else {}
         event_id = str(header.get("event_id") or "").strip()
         event_type = str(header.get("event_type") or "").strip()
         document_id = str(event.get("document_id") or event.get("file_token") or "").strip()
@@ -146,18 +147,27 @@ def create_app(
                     },
                     status_code=400,
                 )
+            try:
+                ik = derive_ingest_kind(event, header)
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
             queue.enqueue(
                 "ingest_feishu_document_event",
                 event_id=event_id,
                 document_id=document_id,
                 event_type=event_type,
                 folder_token="",
+                ingest_kind=ik,
             )
             return JSONResponse({"code": 0, "msg": "ok"})
 
         route = resolve_folder_route(routing_config, folder_token)
         if route is None:
             return JSONResponse({"error": "folder_route_not_resolved"}, status_code=400)
+        try:
+            ingest_kind = derive_ingest_kind(event, header)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
         if not state_store.try_mark_event_seen(event_id):
             return JSONResponse({"code": 0, "msg": "duplicate"})
 
@@ -173,6 +183,8 @@ def create_app(
             cursor_timeout_seconds=routing_config.pipeline_workspace.cursor_timeout_seconds,
             received_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             version=version,
+            dify_target_key=route.dify_target_key,
+            ingest_kind=ingest_kind,
         )
         state_store.save_snapshot(snapshot)
         queue.enqueue("schedule_document_job", document_id=document_id, version=version)

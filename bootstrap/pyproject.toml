@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "newvla-production-bootstrap"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "redis>=6.0,<7.0",
+  "feishu-onboard @ file:../onboard",
+]
+[project.scripts]
+bootstrap = "bootstrap.cli:main"
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.3,<9.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "../onboard/src"]
+testpaths = ["tests"]

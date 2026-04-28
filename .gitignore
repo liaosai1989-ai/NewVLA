@@ -5,3 +5,7 @@ __pycache__/
 *.egg-info/
 dist/
 .pytest_cache/
+
+# 含真实密钥的本地样本（勿提交）
+docs/superpowers/samples/pipeline-workspace-root.env
+.env

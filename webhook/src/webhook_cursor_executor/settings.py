@@ -1,15 +1,27 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import dotenv_values
+from feishu_onboard.env_contract import (
+    feishu_folder_group_keys,
+    route_keys_list_key,
+)
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings.sources import DotEnvSettingsSource
+
+logger = logging.getLogger(__name__)
 
 
 def _env_file() -> Path:
+    raw = os.environ.get("VLA_WORKSPACE_ROOT", "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve() / ".env"
     return Path(__file__).resolve().parents[3] / ".env"
 
 
@@ -37,6 +49,7 @@ class FolderRoute(BaseModel):
     folder_token: str
     qa_rule_file: str
     dataset_id: str
+    dify_target_key: str = "DEFAULT"
 
 
 class RoutingConfig(BaseModel):
@@ -46,11 +59,30 @@ class RoutingConfig(BaseModel):
 
 class ExecutorSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(_env_file()),
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        return (
+            init_settings,
+            DotEnvSettingsSource(
+                settings_cls,
+                env_file=_env_file(),
+                env_file_encoding="utf-8",
+            ),
+            env_settings,
+            file_secret_settings,
+        )
 
     redis_url: str = Field(default="redis://127.0.0.1:6381/0", alias="REDIS_URL")
     vla_queue_name: str = Field(default="vla:default", alias="VLA_QUEUE_NAME")
@@ -119,7 +151,70 @@ class ExecutorSettings(BaseSettings):
         return self
 
 
+def _merged_dotenv_and_os(env_path: Path) -> dict[str, str]:
+    """File values first; ``os.environ`` overrides (required for monkeypatch tests)."""
+    merged: dict[str, str] = {}
+    if env_path.is_file():
+        for k, v in (dotenv_values(env_path) or {}).items():
+            if v is not None:
+                merged[k] = v
+    merged.update(dict(os.environ))
+    return merged
+
+
+def _routing_from_env(settings: ExecutorSettings) -> RoutingConfig | None:
+    env_path = _env_file()
+    merged = _merged_dotenv_and_os(env_path)
+    raw = (merged.get(route_keys_list_key()) or "").strip()
+    if not raw:
+        return None
+    route_keys = [p.strip().upper() for p in raw.split(",") if p.strip()]
+    if not route_keys:
+        return None
+
+    ws_raw = (merged.get("VLA_WORKSPACE_ROOT") or "").strip()
+    if ws_raw:
+        pipeline_path = str(Path(ws_raw).expanduser().resolve())
+    else:
+        pipeline_path = str(env_path.parent.resolve())
+
+    folder_routes: list[FolderRoute] = []
+    for r in route_keys:
+        missing: list[str] = []
+        for ek in feishu_folder_group_keys(r):
+            val = (merged.get(ek) or "").strip()
+            if not val:
+                missing.append(ek)
+        if missing:
+            raise ValueError(
+                f"route key {r}: missing or empty env keys: {', '.join(missing)}"
+            )
+        folder_routes.append(
+            FolderRoute(
+                folder_token=merged[f"FEISHU_FOLDER_{r}_TOKEN"].strip(),
+                qa_rule_file=merged[f"FEISHU_FOLDER_{r}_QA_RULE_FILE"].strip(),
+                dataset_id=merged[f"FEISHU_FOLDER_{r}_DATASET_ID"].strip(),
+                dify_target_key=merged[f"FEISHU_FOLDER_{r}_DIFY_TARGET_KEY"].strip(),
+            )
+        )
+
+    return RoutingConfig(
+        pipeline_workspace=PipelineWorkspace(
+            path=pipeline_path,
+            cursor_timeout_seconds=settings.cursor_run_timeout_seconds,
+        ),
+        folder_routes=folder_routes,
+    )
+
+
 def load_routing_config(settings: ExecutorSettings) -> RoutingConfig:
+    cfg = _routing_from_env(settings)
+    if cfg is not None:
+        return cfg
+    logger.warning(
+        "load_routing_config: legacy JSON folder routes file: %s",
+        settings.folder_routes_file,
+    )
     data = json.loads(Path(settings.folder_routes_file).read_text(encoding="utf-8"))
     return RoutingConfig.model_validate(data)
 

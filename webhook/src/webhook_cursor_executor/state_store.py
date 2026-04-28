@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import json
+import logging
 import time
 
+from pydantic import ValidationError
 from redis import Redis
+
+logger = logging.getLogger(__name__)
 
 from webhook_cursor_executor.models import (
     DocumentSnapshot,
@@ -75,7 +80,26 @@ class RedisStateStore:
 
     def load_snapshot(self, document_id: str) -> DocumentSnapshot | None:
         raw = self.redis.get(self._snapshot_key(document_id))
-        return None if raw is None else DocumentSnapshot.model_validate_json(raw)
+        if raw is None:
+            return None
+        try:
+            data = json.loads(raw)
+        except (TypeError, json.JSONDecodeError):
+            logger.error("snapshot_json_invalid document_id=%s", document_id)
+            return None
+        if not isinstance(data, dict):
+            logger.error("snapshot_not_object document_id=%s", document_id)
+            return None
+        if "ingest_kind" not in data:
+            logger.error("snapshot_missing_ingest_kind document_id=%s", document_id)
+            return None
+        if "dify_target_key" not in data:
+            data = {**data, "dify_target_key": "DEFAULT"}
+        try:
+            return DocumentSnapshot.model_validate(data)
+        except ValidationError:
+            logger.exception("snapshot_model_validate_failed document_id=%s", document_id)
+            return None
 
     def try_acquire_runlock(
         self,

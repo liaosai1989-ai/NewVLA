@@ -63,6 +63,10 @@ def test_webhook_uses_redis_event_seen_and_enqueues_schedule():
     assert first.status_code == 200
     assert second.json()["msg"] == "duplicate"
     assert queue.calls[0][0] == "schedule_document_job"
+    sn = store.load_snapshot("doc_1")
+    assert sn is not None
+    assert sn.ingest_kind == "drive_file"
+    assert sn.dify_target_key == "DEFAULT"
 
 
 def test_drive_edit_without_folder_token_enqueues_ingest_not_listing_in_http():
@@ -104,6 +108,7 @@ def test_drive_edit_without_folder_token_enqueues_ingest_not_listing_in_http():
     assert r.json().get("msg") == "ok"
     assert queue.calls[0][0] == "ingest_feishu_document_event"
     assert queue.calls[0][1]["document_id"] == "docx_token_1"
+    assert queue.calls[0][1]["ingest_kind"] == "drive_file"
     assert not list(store.redis.scan_iter("webhook:event_seen:*"))
 
 
@@ -189,12 +194,54 @@ def test_folder_route_fail_does_not_mark_event_seen():
     good = client.post(
         "/webhook/feishu",
         json={
-            "header": {"event_id": "evt_recover", "event_type": "x"},
+            "header": {
+                "event_id": "evt_recover",
+                "event_type": "drive.file.updated_v1",
+            },
             "event": {"document_id": "d1", "folder_token": "fld_team_a"},
         },
     )
     assert good.status_code == 200
     assert good.json().get("msg") == "ok"
+
+
+def test_webhook_rejects_unknown_event_type_for_ingest_kind():
+    settings = ExecutorSettings(
+        feishu_encrypt_key="",
+        feishu_verification_token="",
+    )
+    routing = RoutingConfig(
+        pipeline_workspace=PipelineWorkspace(
+            path="C:\\workspaces\\pipeline",
+            cursor_timeout_seconds=7200,
+        ),
+        folder_routes=[
+            FolderRoute(
+                folder_token="fld_team_a",
+                qa_rule_file="rules/team_a_qa.md",
+                dataset_id="dataset_team_a",
+            )
+        ],
+    )
+    queue = FakeQueue()
+    store = RedisStateStore(redis_client=FakeStrictRedis(decode_responses=True))
+    app = create_app(
+        settings=settings,
+        routing_config=routing,
+        state_store=store,
+        queue=queue,
+    )
+    client = TestClient(app)
+    r = client.post(
+        "/webhook/feishu",
+        json={
+            "header": {"event_id": "e_bad_ingest", "event_type": "sheet.foo_v1"},
+            "event": {"document_id": "d1", "folder_token": "fld_team_a"},
+        },
+    )
+    assert r.status_code == 400
+    assert "unknown" in (r.json().get("error") or "").lower()
+    assert queue.calls == []
 
 
 def test_url_verification_returns_challenge():

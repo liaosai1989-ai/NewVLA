@@ -1,5 +1,10 @@
 # 旧实现 `.env` 与根目录新合同对照
 
+## 修订说明
+
+- **2026-04-28：** Webhook **文件夹 → 业务映射**真源以 `docs/superpowers/specs/2026-04-28-task-context-bootstrap-sample-agent-contract-design.md` §7 为准：**优先**工作区根 `.env` 中 `FEISHU_FOLDER_ROUTE_KEYS` 与各 `FEISHU_FOLDER_<KEY>_*`；`FOLDER_ROUTES_FILE` JSON **仅** legacy 回退。下文 §1「业务映射」表仍描述分组形态；路由加载顺序以 §7 为准。
+- **2026-04-28（姊妹）：** `ThirdParty.md` 已登记 webhook 运行时依赖 **`python-dotenv`**；与 §7 `.env` 解析、`ENV.mdc` 两份 `.env` 分工互补。
+
 本文档把 `old_code/.env` 所代表的**旧 VLA 单文件配置**与当前仓库**根目录 `.env` 合同**（以 `docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md` 修订块、`onboard` 的 `env_contract`、以及 `webhook` 已声明字段为准）做归纳。**请勿将真实密钥提交进 Git**；根目录真实 `.env` 已被 `.gitignore` 忽略。
 
 ---

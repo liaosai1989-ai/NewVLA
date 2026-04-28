@@ -15,7 +15,7 @@
 - `AGENTS.md` 模板
 - `rules` 规则文件
 - 其他运行该管线所需的工作区上下文
-- **入轨用辅助工具**（人触发的**非** webhook 主链路进程）：`onboard/` 提供可安装的 `feishu-onboard` CLI，按设计创建飞书 App 文件夹、对 `folder_token` 做**夹级** `subscribe`（`file.created_in_folder_v1` 等事件链前提，见同 spec 修订说明与 `onboard/README.md`）、为分享委托人加文件夹协作者、**两阶段**将业务映射与索引写入**仓库根** `.env`（与 `DIFY_TARGET_*` 等合同一致，详见仓库内 `docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md`），并在输入完成后在目标工作区执行 `lark-cli` 初始化
+- **入轨用辅助工具**（人触发的**非** webhook 主链路进程）：`onboard/` 提供可安装的 `feishu-onboard` CLI，按设计创建飞书 App 文件夹、对 `folder_token` 做**夹级** `subscribe`（`file.created_in_folder_v1` 等事件链前提，见同 spec 修订说明与 `onboard/README.md`）、为分享委托人加文件夹协作者、**两阶段**将业务映射与索引写入**仓库根** `.env`（与 `DIFY_TARGET_*` 等合同一致，详见仓库内 `docs/superpowers/specs/2026-04-26-feishu-app-folder-onboard-design.md`），并在输入完成后在目标工作区执行 `lark-cli` 初始化。（**运行合同真源：`bootstrap materialize-workspace` 后的执行工作区根 `.env`**；维护仓根 `.env` 仅为初始化种子；交接见 `bootstrap/README.md`。）
 
 ## 不要混淆
 
@@ -117,6 +117,6 @@
 - 目标工作区的 `AGENTS.md` 模板内容保存在 `prompts/AGENTS.txt`
 - 目标工作区的 `rules` 模板放在 `prompts/rules/`
 
-这些文件是 **待注入真实工作区的长期模板资产**，先保存在本仓库的 `prompts/` 下，由后续初始化逻辑分发到实际工作区。
+这些文件是 **待注入真实工作区的长期模板资产**，先保存在本仓库的 `prompts/` 下，由后续初始化逻辑分发到实际工作区。**执行侧上传与 `task_context` 阅读合同**以 `prompts/AGENTS.txt` 为准（物化后为工作区根 `AGENTS.md`）；本段不重复细则。
 
 `task_prompt.md` 属于 webhook 侧运行时注入物，由对端模块维护，不在本仓库内作为模板资产保存。
