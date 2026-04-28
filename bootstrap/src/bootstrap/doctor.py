@@ -135,13 +135,14 @@ def _validate_feishu_folder_groups(keys: dict[str, str]) -> str | None:
     )
 
 
-def _warn_json_drift(clone_root: Path, workspace: Path, keys: dict[str, str]) -> None:
+def _warn_json_drift(workspace: Path, keys: dict[str, str]) -> None:
     raw = keys.get("FOLDER_ROUTES_FILE", "").strip()
     if not raw:
         return
     routes_path = Path(raw)
     if not routes_path.is_absolute():
-        routes_path = (clone_root / raw).resolve()
+        # Relative paths are under {WORKSPACE_ROOT} (embedded runtime layout), not clone root.
+        routes_path = (workspace / raw).resolve()
     if not routes_path.is_file():
         print(f"WARNING: FOLDER_ROUTES_FILE not readable: {routes_path}", file=sys.stderr)
         return
@@ -247,7 +248,7 @@ def run_doctor(clone_root: Path, workspace: Path) -> int:
         return 1
 
     if not route_nonempty:
-        _warn_json_drift(clone_root, workspace, keys)
+        _warn_json_drift(workspace, keys)
 
     if route_nonempty:
         print(

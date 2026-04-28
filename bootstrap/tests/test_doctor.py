@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -128,6 +129,32 @@ def test_doctor_fails_when_import_paths_not_under_workspace(py312, tmp_path):
                 with patch("bootstrap.doctor._workspace_import_paths_ok", return_value=False):
                     code = run_doctor(clone_root=clone, workspace=ws)
     assert code != 0
+
+
+def test_doctor_relative_folder_routes_file_resolves_under_workspace(py312, tmp_path):
+    """Legacy JSON routing: FOLDER_ROUTES_FILE relative to workspace (not clone root)."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    _stub_embedded_workspace_layout(ws)
+    cfg = ws / "runtime" / "webhook" / "config"
+    cfg.mkdir(parents=True)
+    routes = cfg / "folder_routes.json"
+    routes.write_text(
+        json.dumps({"pipeline_workspace": {"path": str(ws.resolve())}}),
+        encoding="utf-8",
+    )
+    (ws / ".env").write_text(
+        "K=v\nFOLDER_ROUTES_FILE=runtime/webhook/config/folder_routes.json\n",
+        encoding="utf-8",
+    )
+    clone = tmp_path / "clone"
+    clone.mkdir()
+    with patch("bootstrap.doctor.shutil.which", return_value=r"C:\fake\bin"):
+        with patch("bootstrap.doctor._import_markitdown", return_value=MagicMock()):
+            with patch("bootstrap.doctor._import_pipeline_packages"):
+                with patch("bootstrap.doctor._workspace_import_paths_ok", return_value=True):
+                    code = run_doctor(clone_root=clone, workspace=ws)
+    assert code == 0
 
 
 def test_doctor_fails_when_tool_path_resolves_under_clone(py312, tmp_path, monkeypatch):
