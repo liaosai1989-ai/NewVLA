@@ -7,10 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from dotenv import dotenv_values
-from feishu_onboard.env_contract import (
-    feishu_folder_group_keys,
-    route_keys_list_key,
-)
+from vla_env_contract import feishu_folder_group_keys, route_keys_list_key
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic_settings.sources import DotEnvSettingsSource

@@ -28,7 +28,7 @@ from bootstrap.workspace_path import validate_workspace_root_path
 
 
 
-from feishu_onboard.env_contract import feishu_folder_group_keys, route_keys_list_key
+from vla_env_contract import feishu_folder_group_keys, route_keys_list_key
 
 
 

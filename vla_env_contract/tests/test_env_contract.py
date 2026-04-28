@@ -1,7 +1,7 @@
 import pytest
 
-from feishu_onboard.env_contract import dify_group_keys, required_dify_group_suffixes
 from feishu_onboard.validate import dify_group_present
+from vla_env_contract import dify_group_keys, required_dify_group_suffixes
 
 
 def test_dify_group_complete() -> None:

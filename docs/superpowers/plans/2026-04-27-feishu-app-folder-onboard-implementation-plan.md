@@ -277,11 +277,11 @@ def test_dify_target_key_ok_normalizes_case():
 
 `pytest.raises(..., match="route_key"|"dify_target_key")` 依赖错误信息中含该英文词；若将来消息全中文化，须同步改 `match` 或改用 `pytest.raises(ValueError)` + 自定义检查。
 
-`tests/test_env_contract.py`:
+`vla_env_contract/tests/test_env_contract.py`（合同测试；**`dify_group_present`** 仍在 **`feishu_onboard.validate`**）:
 
 ```python
-from feishu_onboard.env_contract import dify_group_keys, required_dify_group_suffixes
 from feishu_onboard.validate import dify_group_present
+from vla_env_contract import dify_group_keys, required_dify_group_suffixes
 
 
 def test_dify_group_complete():

@@ -1,3 +1,10 @@
+## 修订说明
+
+- 2026-04-28：并拢 **`run_id` 语义**，关闭 **BUG-008**。新增 **§3.1**「`run_id` 编号规则」：目录与 JSON 字段一致、**不**强制 UUID/固定前缀、生产侧每任务新发低碰撞 id、仓库提交的样例 JSON 可用稳定可读常量；§3 字段表 **run_id** 行指向 §3.1。
+- 2026-04-28：**§9 Bootstrap 联动** 删 **tools junction** 默认叙事，改为 **物化物理拷贝**、**`runtime/webhook`**、**`vla_env_contract`** 与 **`bootstrap install-packages`** 安装顺序（**`vla_env_contract` 先于 `webhook`**），与 [**workspace-embedded-runtime-design**](2026-04-28-workspace-embedded-runtime-design.md) Task 0 / NTH-008 对齐。
+
+---
+
 # task_context、Bootstrap 样例工作区与 Agent 阅读合同
 
 > **落地状态：已落地**（2026-04-28；实现见 `webhook/`、`dify_upload/`、`bootstrap/`、`prompts/`、`docs/superpowers/samples/`；未闭环项以 `BugList.md` 与姊妹 plan 修订说明为准。）
@@ -50,7 +57,7 @@
 | 字段 | 必填（生产 webhook） | 必填（bootstrap 演示） | 说明 |
 |------|---------------------|------------------------|------|
 | **schema_version** | 是 | 是 | 任务 JSON 模式版本。 |
-| **run_id** | 是 | 是 | 与目录 `.cursor_task/{run_id}/` 一致。 |
+| **run_id** | 是 | 是 | 与目录 `.cursor_task/{run_id}/` 末段目录名 **字面值一致**；编号义务与样例特例见 **§3.1**。 |
 | **event_id** | 是 | 可用占位 | 幂等与追踪。 |
 | **document_id** | 是 | 是 | 飞书文档/对象 id（与事件一致）。 |
 | **folder_token** | 是 | 是 | 路由键。 |
@@ -72,9 +79,18 @@
 - `output_dir`（运行时派生）
 - 飞书/Dify **密钥**、长生命周期秘钥（见 env 合同 spec）
 
+### 3.1 `run_id` 编号规则（统一合同，BUG-008）
+
+下列四条一并阅读，避免将 **样例固定字面值** 与 **生产命名义务** 混读：
+
+1. **结构**：执行工作区下目录 **`.cursor_task/{run_id}/`** 的末段名 **必须** 与 **`task_context.json` 内 `run_id` 字段** 为 **同一字符串**（目录 ⇄ JSON 一致）。
+2. **格式**：合同 **不** 要求 `run_id` 必须为 UUID、时间戳或特定前缀（如 `run_`）；只要作为单一路径段合法、与实现/运维无冲突即可；若部署方另有内部规范，从其规范，**不**与本条矛盾即可。
+3. **生产**：**webhook / 调度** 对 **每一次新任务** **应** 生成 **新发**、**低碰撞** 的 `run_id`（具体算法由实现决定，例如 UUID、带 nonce 的时间串等）。**`write_task_bundle` 等落盘代码** 以调用方传入的 `run_id` 为准，**不**代为实现发号策略。
+4. **本仓库提交的 JSON 样例**（如 `docs/superpowers/samples/task_context.bootstrap.example.json` 中 `bootstrap-sample-run`）：为 **刻意稳定的可读常量**，便于文档对照与回归；**不** 表示生产环境须使用相同字形。
+
 ## 4. 与相关文档的关系
 
-- **Webhook 主设计**：[2026-04-26-webhook-cursor-executor-design.md](2026-04-26-webhook-cursor-executor-design.md)（含 `ingest_kind` / `output_dir` 修订说明）。
+- **Webhook 主设计**：[2026-04-26-webhook-cursor-executor-design.md](2026-04-26-webhook-cursor-executor-design.md)（含 `ingest_kind` / `output_dir` 修订说明）。任务目录与 **`run_id` 字面值规则** 以 **本文 §3.1** 与 [`.cursor/rules/workplacestructure.mdc`](../../../.cursor/rules/workplacestructure.mdc) 为准，避免仅读 webhook 示例片段时误判「必须 `run_` 前缀」等。
 - **Dify 与环境**：[2026-04-26-root-env-and-dify-target-contract-design.md](2026-04-26-root-env-and-dify-target-contract-design.md)、[2026-04-26-dify-upload-rebuild-design.md](2026-04-26-dify-upload-rebuild-design.md)。
 - **Bootstrap 工作区结构**：[2026-04-28-production-bootstrap-deployment-design.md](2026-04-28-production-bootstrap-deployment-design.md)。
 - **执行侧 AGENTS 模板**：`prompts/AGENTS.txt`（物化后为工作区 `AGENTS.md`）。
@@ -218,15 +234,15 @@
 
 ## 9. Bootstrap 联动（与 §7 / §8 **同批次**）
 
-> **结论**：不推翻 `materialize` / `install-packages` 主流程；须同步 **种子与运维说明**、**`doctor` 门禁**、**生产 bootstrap 设计文**、**可选 junction**。与 [2026-04-28-production-bootstrap-deployment-design.md](2026-04-28-production-bootstrap-deployment-design.md) 成对修订时遵守 `docedit`。
+> **结论**：不推翻 `materialize` / `install-packages` 主流程；须同步 **种子与运维说明**、**`doctor` 门禁**、**生产 bootstrap 设计文**。与 [2026-04-28-production-bootstrap-deployment-design.md](2026-04-28-production-bootstrap-deployment-design.md) 成对修订时遵守 `docedit`。**内嵌 runtime** 物化与目录语义以 [**workspace-embedded-runtime-design**](2026-04-28-workspace-embedded-runtime-design.md) **§3–§4**（**`runtime/webhook`**、**`vla_env_contract`**、**实拷贝 `tools/*`**）为准；**非**以 tools **junction** 为默认。
 
 | 范围 | 是否改 bootstrap 代码 | 内容 |
 |------|----------------------|------|
-| **物化主链路** | 否（通常） | `materialize-workspace` 仍：工具 junction、`AGENTS`/`rules` 分发、工作区 `.env` 种子；**不依赖** webhook 用 JSON 还是 `.env` 做 folder 路由。 |
+| **物化主链路** | 否（通常） | `materialize-workspace`：**递归物理拷贝** **`webhook`→`runtime/webhook`**、**`vla_env_contract`**、**`tools/dify_*`**（见 **workspace-embedded** §3）；**`AGENTS`/`rules` 分发**、工作区 `.env` 种子；**不依赖** webhook 用 JSON 还是 `.env` 做 folder 路由。 |
 | **`.env` 种子与 README** | 文案/示例 | `.env.example`、物化交接说明：写明生产 **优先** `FEISHU_FOLDER_ROUTE_KEYS` + 各 `FEISHU_FOLDER_<KEY>_*`；`FOLDER_ROUTES_FILE` **仅**遗留/回退。`bootstrap/README.md` 中 **BUG-005「JSON 与 `--workspace` 双写」** 在 webhook §7 收口后 **必须**改为新口径，避免误导。 |
 | **`doctor`** | 是 | 现依赖 `FOLDER_ROUTES_FILE` 可读性做 WARNING。§7 落地后 **增加**对 `FEISHU_FOLDER_ROUTE_KEYS` 与各 route 组键完整性的检查；JSON 路径 **仅**在「未配置 ROUTE_KEYS、走 legacy」时保留原逻辑。 |
 | **生产 bootstrap 设计 / plan** | 修订说明 | `2026-04-28-production-bootstrap-deployment-design.md` §3.2 等处「`pipeline_workspace.path` 以 JSON 为准」——BUG-005 关单后 **追加修订说明**：与 `VLA_WORKSPACE_ROOT` / 工作区 `.env` 父目录、`CURSOR_RUN_TIMEOUT_SECONDS` 对齐（以 webhook 实现为准）。 |
-| **薄封装 §8 落点** | 视包而定 | 封装若在 **`dify_upload` 包内**：现有 `tools/dify_upload` junction 一般 **足够**，多 export 模块即可。若 **新建 Python 包**：须纳入 `bootstrap` 的 `install_packages` 与 `materialize` junction 列表（与当前 `dify_upload` 同类）。 |
+| **薄封装 §8 落点** | 视包而定 | 封装若在 **`dify_upload` 包内**：在 **`tools/dify_upload`** 源码树内扩展模块即可。若 **新建 Python 包**：须纳入 **`bootstrap` `install-packages`** 可编辑目录集合（与 **`dify_upload`** 同类），安装顺序见 **workspace-embedded** §4.1（**`vla_env_contract` 先于依赖方**）。 |
 | **`prompts/AGENTS.txt`** | 否（bootstrap 侧） | **模板条文真源：§10 checklist**（§2.3 / §8 等均汇入该节，单一出处）；bootstrap **只负责物化**，不得在仓库侧另写一套削弱 §10 语义的编排说明。 |
 
 **验收（与本 spec 单次交付同批次）**：`doctor --workspace` 在「仅 `.env` 路由、无 JSON」配置下行为符合文档；README / `.env.example` 与 §7 真源一致；生产 design 文首或修订说明与实现同步。

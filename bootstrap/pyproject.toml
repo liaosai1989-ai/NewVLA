@@ -8,7 +8,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
   "redis>=6.0,<7.0",
-  "feishu-onboard @ file:../onboard",
+  "vla-env-contract @ file:../vla_env_contract",
 ]
 [project.scripts]
 bootstrap = "bootstrap.cli:main"
@@ -22,5 +22,5 @@ test = [
 where = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "../onboard/src"]
+pythonpath = ["src", "../vla_env_contract/src"]
 testpaths = ["tests"]
