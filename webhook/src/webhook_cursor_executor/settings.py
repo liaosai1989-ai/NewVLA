@@ -132,6 +132,7 @@ class ExecutorSettings(BaseSettings):
         default=str(Path.home() / ".cursor" / "cli-config.json"),
         alias="CURSOR_CLI_CONFIG_PATH",
     )
+    webhook_probe_base: str = Field(default="", alias="WEBHOOK_PROBE_BASE")
 
     @model_validator(mode="after")
     def validate_bounds(self) -> "ExecutorSettings":

@@ -85,6 +85,10 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="Webhook Cursor Executor", version="0.1.0")
 
+    @app.get("/health")
+    async def health() -> JSONResponse:
+        return JSONResponse({"status": "ok"}, status_code=200)
+
     @app.post(settings.feishu_webhook_path)
     async def feishu_webhook(request: Request) -> JSONResponse:
         raw = await request.body()

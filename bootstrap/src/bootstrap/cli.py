@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -45,6 +46,32 @@ def main(argv: list[str] | None = None) -> int:
     mat_p.add_argument("--seed-env", type=Path, default=None)
     mat_p.add_argument("--dry-run", action="store_true")
     mat_p.add_argument("--force", action="store_true")
+
+    iwe_p = sub.add_parser(
+        "install-workspace-editables",
+        help="工作区内四轮 pip install -e .（BUG-007 cwd 顺序）",
+    )
+    iwe_p.add_argument("--workspace", type=Path, required=True)
+
+    probe_p = sub.add_parser("probe", help="doctor 后对 webhook /health 探活（可选 HTTP）")
+    probe_p.add_argument("--workspace", type=Path, required=True)
+    probe_p.add_argument(
+        "--no-http",
+        action="store_true",
+        help="跳过 HTTP，仅 doctor + 可选 RQ 提示",
+    )
+    probe_p.add_argument(
+        "--webhook-http-base",
+        type=str,
+        default=None,
+        help="覆盖工作区 .env 的 WEBHOOK_PROBE_BASE",
+    )
+    probe_p.add_argument("--clone-root", type=Path, default=None)
+    probe_p.add_argument(
+        "--skip-doctor",
+        action="store_true",
+        help="跳过 probe 内 doctor（已单独跑过 doctor 时用）",
+    )
 
     ns = p.parse_args(argv)
 
@@ -91,6 +118,28 @@ def main(argv: list[str] | None = None) -> int:
                 return code
             return 1
         return 0
+
+    if ns.cmd == "install-workspace-editables":
+        from bootstrap.install_workspace_editables import install_workspace_editables
+
+        ws = ns.workspace.resolve()
+        try:
+            install_workspace_editables(ws)
+        except subprocess.CalledProcessError:
+            return 1
+        return 0
+
+    if ns.cmd == "probe":
+        clone = _resolve_clone_root(ns.clone_root)
+        from bootstrap.probe import run_probe
+
+        return run_probe(
+            clone_root=clone,
+            workspace=ns.workspace.resolve(),
+            no_http=ns.no_http,
+            webhook_http_base=ns.webhook_http_base,
+            skip_doctor=ns.skip_doctor,
+        )
 
     return 2
 

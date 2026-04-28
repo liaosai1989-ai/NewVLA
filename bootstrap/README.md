@@ -6,11 +6,11 @@
 
 1. `Set-Location <CLONE_ROOT>`（维护仓库克隆根）。
 2. `py -3.12 -m pip install -e ".\bootstrap[test]"`（本仓库 **`requires-python >=3.12`**；未装 `py` 时用 **Python 3.12** 的 `python.exe` 全路径）。**克隆路径某段含空格**且本条报 **`No such file or directory`**、错误路径像 **`...\父级\onboard`**（少仓库名一级）：改 **`Set-Location .\bootstrap`** → **`py -3.12 -m pip install -e ".[test]"`** → **`Set-Location ..`**（根因见 `BugList.md` **BUG-007**；`install-packages` / 闸门脚本已用等价安全调用）。
-3. `py -3.12 -m bootstrap interactive-setup`（编排：`install-packages` → `materialize-workspace` → 提示编辑 **`{WORKSPACE}\.env`** → `doctor`）。
+3. `py -3.12 -m bootstrap interactive-setup`（冻结顺序：`install-packages` → `materialize-workspace` → **`install-workspace-editables`**（四轮工作区 `pip install -e .`）→ 提示编辑 **`{WORKSPACE}\.env`** → `doctor` → **`probe --no-http`**（不起 HTTP 监听时仅 doctor + 可选 RQ 告警段））。
 
 运行合同 **`.env` 只在「执行工作区根」**；物理路径 **仅**由交互/`--workspace` 表达。**勿**在工作区 `.env` 增加 `PIPELINE_WORKSPACE_PATH` 等与 CLI 重复的路径抽象。
 
-对立子命令 `doctor`、`install-packages`、`materialize-workspace`：**仅** CI、脚本与排障；**不得**与人验收签字并列为主流程。
+分立子命令 **`install-workspace-editables`**、`doctor`、`install-packages`、`materialize-workspace`、**`probe`**：**仅** CI、脚本与排障补充；**不得**替代上面第 3 条作为与人验收并列的「第二套主入口」。
 
 ### PowerShell（勿用 bash `` `&&` ``）
 
@@ -20,7 +20,21 @@ py -3.12 -m pip install -e ".\bootstrap[test]"
 py -3.12 -m bootstrap interactive-setup
 ```
 
-物化后按提示用编辑器打开工作区 `.env` 填入密钥；再继续直至 `doctor` 结束。
+物化后按提示用编辑器打开工作区 `.env` 填入密钥；再继续直至 `doctor` 与交互内 `probe`（`--no-http`）结束。**起 webhook 后**可在同工作区另行执行 **`bootstrap probe --workspace …`**（**不带** `--no-http`）以对 `{WEBHOOK_PROBE_BASE}/health` 做全流程 HTTP 探活（见工作区 `.env` 中 **`WEBHOOK_PROBE_BASE`**，`http://127.0.0.1:<PORT>` 级）。
+
+**工作区内四轮 `pip install -e .` 唯一写法（不要手抄四条 PowerShell）：** 子命令 **`bootstrap install-workspace-editables --workspace <WORKSPACE>`**，顺序固定为 **`vla_env_contract`** → **`runtime/webhook`** → **`tools/dify_upload`** → **`tools/feishu_fetch`**。
+
+---
+
+## `bootstrap probe` 退出码
+
+| 退出码 | 含义 |
+|--------|------|
+| **0** | `doctor` 通过（未使用 `--skip-doctor` 时）；且 **`--no-http`** 时跳过 HTTP；或 HTTP GET **`{WEBHOOK_PROBE_BASE}/health`** 得到 **200** |
+| **1** | `doctor` 未通过；或需要 HTTP 时 **`WEBHOOK_PROBE_BASE` 与工作区 `.env` 均无有效基地址**且无 **`--webhook-http-base`**；或 **TCP/HTTP 失败**、非 200 |
+| **2** | **`--clone-root` 无效**（与其它子命令一致的克隆根自检失败） |
+
+**`--no-http`（交互与非 HTTP 闸门）：** 仅跑 `doctor`（除非同时传 **`--skip-doctor`**），不访问 webhook；stderr 可出现 **RQ 探测未实现** 的一行 WARNING。
 
 ---
 
@@ -46,7 +60,7 @@ py -3.12 -m bootstrap interactive-setup
 | 工作区 `.env` | **唯一运行合同真源**；与 `--workspace` / `VLA_WORKSPACE_ROOT` 同目录 |
 | onboard | `feishu-onboard` 默认写 **维护仓根** `.env`；须 **合并或复制** 进工作区 `.env` |
 | BUG-005（遗留 JSON 模式） | 若 **未**配置 `FEISHU_FOLDER_ROUTE_KEYS`、仍走 `FOLDER_ROUTES_FILE` JSON：JSON 内 `pipeline_workspace.path` 须与 **`materialize-workspace --workspace`** / **`VLA_WORKSPACE_ROOT`** 规范化路径一致——见 task-context spec §7、[`pipeline-workspace-root.env.example`](../docs/superpowers/samples/pipeline-workspace-root.env.example)。已配置 `.env` 路由时真源为工作区 `.env`，不以 JSON 双写为主 |
-| BUG-007（Windows / `pip` / 路径含空格） | **`install-packages`** 对各子包 **`cwd` + `-e .`**；**`run-unattended-acceptance.ps1`** 在 **`bootstrap` 目录内** 首装。人手在克隆根首装仍遇 **`file:../onboard`** 错位时按上文第 2 步括号说明；排障与复现命令见 `BugList.md` |
+| BUG-007（Windows / `pip` / 路径含空格） | 克隆侧 **`install-packages`** 与各包 **`cwd` + `-e .`**；工作区四轮 **`bootstrap install-workspace-editables`**；**`run-unattended-acceptance.ps1`** 在 **`bootstrap` 目录内** 首装。人手在克隆根首装仍遇 **`file:../onboard`** 错位时按上文第 2 步括号说明；排障与复现命令见 `BugList.md` |
 | BUG-004 | 见 `BugList.md`；`doctor` 末尾 stderr 提示 |
 
 ---
@@ -76,18 +90,22 @@ py -3.12 -m bootstrap interactive-setup
 
 ## 落地后无人介入验收（闸门）
 
-**不替代人机签字。** Merge/CI 最低门槛为 **A 档**（`-SkipDoctor`）；维护机在完整依赖下再跑 **B 档**（含 `doctor`）。闸门脚本对 **`materialize-workspace` 带 `--force`**，同一 **`Workspace`** 重复跑不会因残留 **`rules/`** 失败。
+**不替代人机签字。** Merge/CI 常用 **A 档**：**不写盘医生** **`-SkipDoctor`**，且通常 **不写盘 HTTP `-SkipProbe` 或不监听 webhook 时使用 `-SkipProbeHttp`**。**B 档**在本机已有 **cursor / lark / Redis** 等前提下跑 **`doctor`**，并在 webhook 已监听后对 **`probe`（HTTP）** 签字。闸门脚本对 **`materialize-workspace` 带 `--force`**；同一 **`Workspace`** 重复跑不会因残留 **`rules/`** 失败。
+
+**闸门冻结顺序：** `pip install -e .\bootstrap[test]`（在 **`bootstrap`** 目录内执行，见上文 BUG-007）→ **（可选）** **`bootstrap install-packages`** → **`bootstrap materialize-workspace … --force`** → **`bootstrap install-workspace-editables --workspace`** → 用 **`pipeline-workspace-root.env.example`** **覆盖** `{WORKSPACE}\.env` → **`doctor`**（若未 `-SkipDoctor`）→ **`probe`**（`-SkipProbeHttp` **仅跳过 HTTP 段**，不是全流程签字等价物；`-SkipProbe` 整条跳过 **`probe`**）
+
+**`-SkipInstallPackages` 默认为 `$true`：** **不**跑克隆侧 **`bootstrap install-packages`**（避免克隆 editable 与工作区 **`doctor`** 的包前缀混淆）；需要时传 **`-SkipInstallPackages:$false`**。
 
 | 档位 | 内容 |
 |------|------|
-| **A（必选）** | `pip install -e .\bootstrap[test]` → `bootstrap install-packages` → `bootstrap materialize-workspace … --force` → 用 **`pipeline-workspace-root.env.example`** **覆盖** `{WORKSPACE}\.env` |
-| **B（默认全量）** | A + `bootstrap doctor --workspace $WORKSPACE` |
+| **A（Merge/CI 常见）** | 上序列 + **`-SkipDoctor`**；建议 **` -SkipProbe`**（或 **`-SkipProbeHttp`** 仅 **`probe --no-http`**）。**≠** B 档全流程 |
+| **B（机器上全量）** | 含 **`doctor`**；**不带** `-SkipProbeHttp` 时 **`probe` 会对 `WEBHOOK_PROBE_BASE`/health**（须 webhook 已在对应端口监听） |
 
 脚本 **省略 `-PythonExe` 时**自动用 **`py -3.12`** 解析出的解释器路径（装有多版本 Python 时无需再把 3.10 设为默认）。仅当机器上 **没有** `py` 启动器或 **没有** 3.12 时，才 fallback 到 `python.exe`（须自行保证 ≥3.12），或显式传 `-PythonExe`。
 
 ```powershell
 Set-Location <CLONE_ROOT>
-powershell -File .\bootstrap\scripts\run-unattended-acceptance.ps1 -SkipDoctor -Workspace "<WORKSPACE>"
+powershell -File .\bootstrap\scripts\run-unattended-acceptance.ps1 -SkipDoctor -SkipProbe -Workspace "<WORKSPACE>"
 ```
 
 若要强制指定解释器：

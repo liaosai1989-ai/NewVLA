@@ -18,6 +18,38 @@ class FakeQueue:
     def enqueue(self, job_name: str, **kwargs) -> None:
         self.calls.append((job_name, kwargs))
 
+def test_health_endpoint_returns_ok_no_redis():
+    settings = ExecutorSettings(
+        feishu_encrypt_key="",
+        feishu_verification_token="",
+    )
+    routing = RoutingConfig(
+        pipeline_workspace=PipelineWorkspace(
+            path="C:\\workspaces\\pipeline",
+            cursor_timeout_seconds=7200,
+        ),
+        folder_routes=[
+            FolderRoute(
+                folder_token="fld_team_a",
+                qa_rule_file="rules/team_a_qa.md",
+                dataset_id="dataset_team_a",
+            )
+        ],
+    )
+    queue = FakeQueue()
+    store = RedisStateStore(redis_client=FakeStrictRedis(decode_responses=True))
+    app = create_app(
+        settings=settings,
+        routing_config=routing,
+        state_store=store,
+        queue=queue,
+    )
+    client = TestClient(app)
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+
+
 def test_default_webhook_path_is_stable():
     settings = ExecutorSettings()
 

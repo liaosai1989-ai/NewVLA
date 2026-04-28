@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import Callable
 
 from bootstrap.doctor import run_doctor
 from bootstrap.install_packages import install_all
+from bootstrap.install_workspace_editables import install_workspace_editables
 from bootstrap.materialize import materialize_workspace
 from bootstrap.paths import assert_clone_root_looks_sane
+from bootstrap.probe import run_probe
 from bootstrap.workspace_path import validate_workspace_root_path
 
 
@@ -53,6 +56,11 @@ def run_interactive_setup(
         dry_run=dry_run,
         force=False,
     )
+    if not dry_run:
+        try:
+            install_workspace_editables(ws)
+        except subprocess.CalledProcessError:
+            return 1
     print_fn(f"Edit workspace .env with your editor: {ws / '.env'}")
     print_fn(
         "Routing contract (§7): prefer FEISHU_FOLDER_ROUTE_KEYS + FEISHU_FOLDER_<KEY>_* "
@@ -64,4 +72,17 @@ def run_interactive_setup(
     )
     if not yes:
         input_fn("Press Enter to run doctor… ")
-    return run_doctor(clone_root=clone_root, workspace=ws)
+    doc_code = run_doctor(clone_root=clone_root, workspace=ws)
+    if doc_code != 0:
+        return doc_code
+    if not dry_run:
+        probe_code = run_probe(
+            clone_root=clone_root,
+            workspace=ws,
+            no_http=True,
+            webhook_http_base=None,
+            skip_doctor=True,
+        )
+        if probe_code != 0:
+            return probe_code
+    return 0
