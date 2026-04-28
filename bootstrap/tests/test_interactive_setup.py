@@ -38,7 +38,6 @@ def test_interactive_setup_calls_pipeline_in_order(tmp_path, monkeypatch):
             with patch("bootstrap.interactive_setup.run_doctor", fake_doctor):
                 code = run_interactive_setup(
                     dry_run=False,
-                    no_junction_tools=True,
                     yes=True,
                     input_fn=fake_input,
                     print_fn=lambda *a, **k: None,

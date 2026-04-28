@@ -5,7 +5,7 @@
 与 `docs/superpowers/specs/2026-04-28-production-bootstrap-deployment-design.md` §7 一致：**不得**用分立子命令替代本条作为主签字路径。
 
 1. `Set-Location <CLONE_ROOT>`（维护仓库克隆根）。
-2. `py -3.12 -m pip install -e ".\bootstrap[test]"`（本仓库 **`requires-python >=3.12`**；未装 `py` 时用 **Python 3.12** 的 `python.exe` 全路径）。
+2. `py -3.12 -m pip install -e ".\bootstrap[test]"`（本仓库 **`requires-python >=3.12`**；未装 `py` 时用 **Python 3.12** 的 `python.exe` 全路径）。**克隆路径某段含空格**且本条报 **`No such file or directory`**、错误路径像 **`...\父级\onboard`**（少仓库名一级）：改 **`Set-Location .\bootstrap`** → **`py -3.12 -m pip install -e ".[test]"`** → **`Set-Location ..`**（根因见 `BugList.md` **BUG-007**；`install-packages` / 闸门脚本已用等价安全调用）。
 3. `py -3.12 -m bootstrap interactive-setup`（编排：`install-packages` → `materialize-workspace` → 提示编辑 **`{WORKSPACE}\.env`** → `doctor`）。
 
 运行合同 **`.env` 只在「执行工作区根」**；物理路径 **仅**由交互/`--workspace` 表达。**勿**在工作区 `.env` 增加 `PIPELINE_WORKSPACE_PATH` 等与 CLI 重复的路径抽象。
@@ -46,6 +46,7 @@ py -3.12 -m bootstrap interactive-setup
 | 工作区 `.env` | **唯一运行合同真源**；与 `--workspace` / `VLA_WORKSPACE_ROOT` 同目录 |
 | onboard | `feishu-onboard` 默认写 **维护仓根** `.env`；须 **合并或复制** 进工作区 `.env` |
 | BUG-005（遗留 JSON 模式） | 若 **未**配置 `FEISHU_FOLDER_ROUTE_KEYS`、仍走 `FOLDER_ROUTES_FILE` JSON：JSON 内 `pipeline_workspace.path` 须与 **`materialize-workspace --workspace`** / **`VLA_WORKSPACE_ROOT`** 规范化路径一致——见 task-context spec §7、[`pipeline-workspace-root.env.example`](../docs/superpowers/samples/pipeline-workspace-root.env.example)。已配置 `.env` 路由时真源为工作区 `.env`，不以 JSON 双写为主 |
+| BUG-007（Windows / `pip` / 路径含空格） | **`install-packages`** 对各子包 **`cwd` + `-e .`**；**`run-unattended-acceptance.ps1`** 在 **`bootstrap` 目录内** 首装。人手在克隆根首装仍遇 **`file:../onboard`** 错位时按上文第 2 步括号说明；排障与复现命令见 `BugList.md` |
 | BUG-004 | 见 `BugList.md`；`doctor` 末尾 stderr 提示 |
 
 ---
@@ -79,7 +80,7 @@ py -3.12 -m bootstrap interactive-setup
 
 | 档位 | 内容 |
 |------|------|
-| **A（必选）** | `pip install -e .\bootstrap[test]` → `bootstrap install-packages` → `bootstrap materialize-workspace … --no-junction-tools` → 用 **`pipeline-workspace-root.env.example`** **覆盖** `{WORKSPACE}\.env` |
+| **A（必选）** | `pip install -e .\bootstrap[test]` → `bootstrap install-packages` → `bootstrap materialize-workspace … --force` → 用 **`pipeline-workspace-root.env.example`** **覆盖** `{WORKSPACE}\.env` |
 | **B（默认全量）** | A + `bootstrap doctor --workspace $WORKSPACE` |
 
 脚本 **省略 `-PythonExe` 时**自动用 **`py -3.12`** 解析出的解释器路径（装有多版本 Python 时无需再把 3.10 设为默认）。仅当机器上 **没有** `py` 启动器或 **没有** 3.12 时，才 fallback 到 `python.exe`（须自行保证 ≥3.12），或显式传 `-PythonExe`。
@@ -108,4 +109,4 @@ CI 无私盘可将 **`-Workspace`** 设为 **`%TEMP%\\newvla-bootstrap-unattende
 
 ## P0 vs CI
 
-**人机签字**以 **Windows + junction（真实联接）** 为准。**Linux CI 绿 ≠** 生产就绪。
+**人机签字**以 **Windows** 上 **实拷贝物化**（`vla_env_contract`、`runtime/webhook`、`tools/*`）**与** **工作区内 `pip install -e`** 为准。**Linux CI 绿 ≠** 生产就绪。

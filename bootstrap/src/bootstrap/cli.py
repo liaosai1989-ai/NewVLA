@@ -25,7 +25,6 @@ def main(argv: list[str] | None = None) -> int:
         help="人机验收主入口：编排 install → materialize → 编辑提示 → doctor（spec §7）",
     )
     setup_p.add_argument("--dry-run", action="store_true")
-    setup_p.add_argument("--no-junction-tools", action="store_true")
     setup_p.add_argument(
         "--yes",
         action="store_true",
@@ -44,7 +43,6 @@ def main(argv: list[str] | None = None) -> int:
     mat_p.add_argument("--clone-root", type=Path, default=None)
     mat_p.add_argument("--sync-env-from-clone", action="store_true")
     mat_p.add_argument("--seed-env", type=Path, default=None)
-    mat_p.add_argument("--no-junction-tools", action="store_true")
     mat_p.add_argument("--dry-run", action="store_true")
     mat_p.add_argument("--force", action="store_true")
 
@@ -55,7 +53,6 @@ def main(argv: list[str] | None = None) -> int:
 
         return run_interactive_setup(
             dry_run=ns.dry_run,
-            no_junction_tools=ns.no_junction_tools,
             yes=ns.yes,
         )
 
@@ -76,12 +73,10 @@ def main(argv: list[str] | None = None) -> int:
         clone = _resolve_clone_root(ns.clone_root)
         from bootstrap.materialize import materialize_workspace
 
-        link_tools = (not ns.no_junction_tools) and sys.platform == "win32"
         try:
             materialize_workspace(
                 clone_root=clone,
                 workspace_root=ns.workspace.resolve(),
-                link_tools=link_tools,
                 seed_env=ns.seed_env,
                 sync_env_from_clone=ns.sync_env_from_clone,
                 dry_run=ns.dry_run,

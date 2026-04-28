@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Callable
 
@@ -14,7 +13,6 @@ from bootstrap.workspace_path import validate_workspace_root_path
 def run_interactive_setup(
     *,
     dry_run: bool,
-    no_junction_tools: bool,
     yes: bool,
     input_fn: Callable[[str], str] = input,
     print_fn: Callable[..., None] = print,
@@ -44,14 +42,12 @@ def run_interactive_setup(
         except ValueError as e:
             print_fn(str(e))
 
-    link_tools = (not no_junction_tools) and sys.platform == "win32"
     print_fn("Running install-packages…")
     install_all(clone_root)
     print_fn("Running materialize-workspace…")
     materialize_workspace(
         clone_root=clone_root,
         workspace_root=ws,
-        link_tools=link_tools,
         seed_env=None,
         sync_env_from_clone=False,
         dry_run=dry_run,

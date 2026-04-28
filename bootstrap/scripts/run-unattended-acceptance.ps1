@@ -49,13 +49,21 @@ $Workspace = $Workspace.Trim()
 
 Set-Location $CloneRoot
 
-& $PythonExe -m pip install -e ".\bootstrap[test]"
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+# BUG-007: install from inside bootstrap with "-e ." — not ".\bootstrap[test]" from clone root
+# when paths contain spaces (pip file: dependency resolution).
+Push-Location (Join-Path $CloneRoot "bootstrap")
+try {
+    & $PythonExe -m pip install -e ".[test]"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+finally {
+    Pop-Location
+}
 
 & $PythonExe -m bootstrap install-packages --clone-root $CloneRoot
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-& $PythonExe -m bootstrap materialize-workspace --workspace $Workspace --clone-root $CloneRoot --no-junction-tools --force
+& $PythonExe -m bootstrap materialize-workspace --workspace $Workspace --clone-root $CloneRoot --force
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $sample = Join-Path $CloneRoot "docs\superpowers\samples\pipeline-workspace-root.env.example"
