@@ -43,7 +43,7 @@
 
 | ID | 摘要 | 严重级别 | 状态 | 发现时间 | 相关链接 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- |
-| BUG-001 | 可执行文件依赖应统一为 PATH+标准解析，需全仓审计历史旁路 | P2 | 已确认 | 2026-04-27 | `onboard/README.md`、`onboard/.../lark_cli.py`、`feishu_fetch/.../facade.py`、`webhook/.../cursor_cli.py`/`settings.py`、`webhook/操作手册` 升级节、`docs/superpowers/specs/2026-04-26-webhook-cursor-executor-design.md` 修订 2026-04-27 | `webhook` 已：固定 `cursor`+`which`、禁 `CURSOR_CLI_COMMAND`；`feishu_fetch`/`onboard` 同前；**全仓**余模块审计关单仍待 |
+| BUG-001 | 可执行文件依赖应统一为 PATH+标准解析，需全仓审计历史旁路 | P2 | 已关闭 | 2026-04-27 | 上列实现路径 + `docs/superpowers/specs/2026-04-26-webhook-cursor-executor-design.md`、`2026-04-26-root-env-and-dify-target-contract-design.md`、`2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md` **修订 2026-04-30** | 关闭：主链路已 `agent`/`lark-cli`+`which`、禁 `CURSOR_CLI_COMMAND`/`LARK_CLI_COMMAND`；三份 spec 文首修订对齐真源；`old_code/` 不纳入运行时合同 |
 | BUG-002 | 入轨 `POST .../permissions/.../members?type=folder` 在联调子命令可成功时仍 400/失败，属表现差异需收敛 | P1 | 已关闭 | 2026-04-27 | `onboard/src/feishu_onboard/flow.py`、`onboard/src/feishu_onboard/feishu_client.py` | 关闭：根因为 `.env` 中委托人 `open_id` 抄录少一位 → 1063001；修正后加协作者成功 |
 | BUG-003 | `lark-cli config show` 误传 `--json`，与 @larksuite/cli 1.0.19 不符，致校验子进程退出码 1 | P1 | 已修复 | 2026-04-27 | `onboard/src/feishu_onboard/lark_cli.py`、`feishu_fetch/src/feishu_fetch/facade.py` | 改为 `config show`；`onboard`/`feishu_fetch` 单测与真机入轨可验 |
 | BUG-004 | `feishu-onboard` 与 webhook 对同一路线双重登记 `qa_rule_file`/`dataset_id`，v1 运行时只消费 JSON 侧字段，易与根 `.env` 展示脱节 | P2 | 已关闭 | 2026-04-27 | `webhook/操作手册.md`、`onboard/flow.py` | 关闭：webhook **`FEISHU_FOLDER_ROUTE_KEYS`** 与各 **`FEISHU_FOLDER_<KEY>_*`** 为运行时 mapping 真源，与 onboard 对齐；见 BUG-005 同源修复 |
@@ -99,28 +99,29 @@
 ## BUG-001 可执行文件依赖应统一为 PATH+标准解析，需全仓审计历史旁路
 
 - 发现时间：2026-04-27
-- 当前状态：已确认（`onboard` 已按标准实现调整；**全仓库**对同类问题的排查**待做**）
+- 当前状态：已关闭（2026-04-30：合同/spec 修订收口；主链路此前已合入）
 - 严重级别：P2
 - 环境/复现：
   - 背景：部分代码在 **PATH 无法写入/不可靠** 的环境下开发，曾以非标准方式「绕过」（例如本机可执行文件**硬编码/非 PATH 配置**的隐性约定，而非仓库内可审查契约）。
   - 表现：`lark-cli`、`node`、`markitdown` 等若未统一从 **PATH** 与语言侧标准解析（如 Python 的 `shutil.which`）解析，则换机、CI 与协作者环境易出现**偶发找不到命令**，且与**规范环境约定**（应用内不写死可执行文件路径、由运行环境提供 PATH）不一致。
-- 现象：在 `feishu-onboard` 入轨与排障中暴露；同一类风险可能存在于**其他子模块**（如 `feishu_fetch` 等对 `lark-cli`、Python `markitdown` 的调用方式）。
+- 现象：曾在 `feishu-onboard` 入轨与排障中暴露；**主链路**（`webhook` / `feishu_fetch` / `onboard`）已按 PATH + `which` 收口；**2026-04-30** spec/手册已对齐（见相关链接）。
 - 预期：全仓库中 **调用外部可执行文件或 CLI** 的代码路径，应统一为：**依赖 PATH、文档说明由运维/本机配好环境**；不依赖未文档化的本机旁路、不在应用配置中塞「绝对路径可执行文件」作为长期方案。
 - 根因（已讨论结论）：**历史环境与代码质量**导致旁路，不应在维护仓库内延续；应在实现与文档中强制标准约定。
 - 相关链接：
-  - `onboard/README.md` §4（`lark-cli` 与 PATH）
-  - `onboard/src/feishu_onboard/lark_cli.py`（仅 `shutil.which` + `lark-cli`）
-  - 待扫示例：`feishu_fetch`（`lark-cli`、`markitdown` 等），见全仓 `grep`/架构审查
+  - `webhook/src/webhook_cursor_executor/cursor_cli.py`、`settings.py`；`feishu_fetch/src/feishu_fetch/facade.py`、`config.py`；`onboard/src/feishu_onboard/lark_cli.py`、`flow.py`
+  - `webhook/操作手册.md`、`webhook/README.md`；`ENV-OLD-TO-NEW.md`
+  - `docs/superpowers/specs/2026-04-26-webhook-cursor-executor-design.md`、`2026-04-26-root-env-and-dify-target-contract-design.md`、`2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md`（**修订 2026-04-30**）
+  - `docs/superpowers/plans/2026-04-28-production-bootstrap-deployment-implementation-plan.md`（修订 2026-04-30：`doctor` / `agent`）
 
 ### 修复说明（有则填）
 
-- `onboard`：`flow` 固定命令名 `lark-cli`，**不**读 `LARK_CLI_COMMAND`；`lark_cli._resolve_lark_cli_exe` 仅 `shutil.which`。其余包待按本条做**全仓库检查**后更新状态。
-- `feishu_fetch`：与 [2026-04-27-feishu-fetch-lark-cli-workspace-init-implementation-plan.md](docs/superpowers/plans/2026-04-27-feishu-fetch-lark-cli-workspace-init-implementation-plan.md) 一致；包内无 `MARKITDOWN_COMMAND`、无 lark 外可执行 `*_COMMAND` 旁路；lark 不经 `FeishuFetchSettings`，`LARK_CLI_COMMAND` 在 `.env` 中视为废键；`lark-cli`+`shutil.which`+`subprocess.run(..., cwd=workspace_root)`。全仓关单仍依总表条件。
-- `webhook`：固定 `cursor` + `shutil.which`；`CURSOR_CLI_COMMAND` 已从设置模型移除，根 `.env`/环境变量出现该键则启动失败；`cursor_not_in_path` 见 `操作手册` 排障。spec/plan 已追加 2026-04-27 修订说明与升级阻断说明。
+- `onboard`：`flow` 固定命令名 `lark-cli`，**不**读 `LARK_CLI_COMMAND`；`lark_cli._resolve_lark_cli_exe` 仅 `shutil.which`。
+- `feishu_fetch`：与 [2026-04-27-feishu-fetch-lark-cli-workspace-init-implementation-plan.md](docs/superpowers/plans/2026-04-27-feishu-fetch-lark-cli-workspace-init-implementation-plan.md) 一致；包内无 `MARKITDOWN_COMMAND`、无 lark 外可执行 `*_COMMAND` 旁路；lark 不经 `FeishuFetchSettings`，`LARK_CLI_COMMAND` 在 `.env` 中视为废键；`lark-cli`+`shutil.which`+`subprocess.run(..., cwd=workspace_root)`。
+- `webhook`：固定 **`agent`**（Cursor Agent CLI）+ `shutil.which`；**非**桌面 `cursor`；`CURSOR_CLI_COMMAND` 已从设置模型移除，根 `.env`/环境变量出现该键则启动失败；未找到 CLI 时 summary 前缀 **`agent_cli_not_found:`** 见 `scheduler.py`（操作手册与 README 以 **PATH 上 `agent`** 为准）。**2026-04-30** 三份 cross-module spec 文首修订对齐 [`webhook-cursor-executor-design`](docs/superpowers/specs/2026-04-26-webhook-cursor-executor-design.md)、[`root-env`](docs/superpowers/specs/2026-04-26-root-env-and-dify-target-contract-design.md)、[`feishu-fetch-lark-cli-workspace-init`](docs/superpowers/specs/2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md)。
 
-### 验证（关闭前填）
+### 验证（已关闭）
 
-- 关闭本 bug 的合理条件建议：**全仓审计完成**、列出已扫描路径与结论（或建子 issue/PR 追踪），并确认无未文档化的可执行文件旁路；或经团队决议接受例外并**写入文档**。
+- 2026-04-30：主链路 Python 静态核对 + 上列 spec / 手册修订；`old_code/` 仅历史参照（与 root-env 合同一致）。
 
 ## BUG-003 `lark-cli config show` 误传 `--json`，与 @larksuite/cli 1.0.19 不符，致校验子进程退出码 1
 

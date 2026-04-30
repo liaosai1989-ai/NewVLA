@@ -2,6 +2,15 @@
 
 > **落地状态：已落地（主路径）**（2026-04-28；与 `.cursor/rules/env.mdc` 及三模块 settings 一致；路由真源与 JSON 派生产物待对齐见 `BugList.md` BUG-005。）
 
+## 修订说明（2026-04-30 `feishu_fetch` 与 `lark-cli`：PATH 固定命令名；废键 `LARK_CLI_COMMAND`；BUG-001）
+
+本文件以下正文保留原文。若与 **2026-04-27 onboard-lark-cli 联动补充** 或正文 **§4.3 / §9.2** 等仍写「`feishu_fetch` 消费 `LARK_CLI_COMMAND`」「检查 `LARK_CLI_COMMAND` 可执行」「缺 `FEISHU_APP_SECRET`」等冲突，**以本段为准**（对齐仓库 `feishu_fetch/src/feishu_fetch/config.py`、`facade.py`）：
+
+- **`feishu_fetch` 根 `.env` 合同**：**不**包含 **`LARK_CLI_COMMAND`**；该键若存在则 **加载设置阶段 `ValueError`**（须整行删除）。
+- **子进程**：固定命令名 **`lark-cli`**，**仅**经 **`shutil.which`** 解析；**非**用户可配可执行路径。另只读 **`FEISHU_REQUEST_TIMEOUT_SECONDS`**、**`FEISHU_APP_ID`**（等与当前实现一致的键）；**不**读 **`FEISHU_APP_SECRET`** 作运行时注入。
+- **运行时职责**：在已初始化之 `lark-cli` 配置前提下，**校验** PATH 上 **`lark-cli`** 可、`config show` 等预检通过后执行抓取；**非**「核对某 `LARK_CLI_COMMAND` 环境变量」。
+- **§9.2 历史条目**：「`LARK_CLI_COMMAND` 不存在」应理解为 **`lark-cli` 在 PATH 上不可解析**；「缺 `FEISHU_APP_SECRET`」与当前 `feishu_fetch` 模块合同**不一致**者以 **`feishu_fetch` 包 README / feishu-fetch-lark-cli spec 文首修订**为准。
+
 ## 修订说明（2026-04-27 MarkItDown 固定依赖口径补充）
 
 本文件以下正文保留原文，不直接改写原设计内容。

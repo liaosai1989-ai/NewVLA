@@ -8,6 +8,14 @@
 
 > **落地状态：已落地**（2026-04-28；与仓库 `webhook` 模块及下文各修订说明一致；运行时键名与 PATH 约定以 `webhook/src/webhook_cursor_executor/settings.py` 为准。）
 
+## 修订说明（2026-04-30 Cursor Agent CLI：命令名 `agent`；覆盖下文 2026-04-27「固定 `cursor`」措辞）
+
+本文件以下正文保留原文。若与 **修订说明（2026-04-27 Cursor CLI 可执行）** 中「固定命令名 `cursor`」「PATH 能解析到 `cursor`」「`cursor_not_in_path`」等表述冲突，**以本段为准**：
+
+- **可执行文件真源**：`webhook/src/webhook_cursor_executor/cursor_cli.py` 固定 **`agent`**（Cursor Agent CLI），`shutil.which("agent")` 得绝对路径后 `subprocess.run`。桌面启动器 **`cursor`**（Electron）**不得**替代 headless `agent -p` 管线。
+- **`CURSOR_CLI_COMMAND`**：仍禁止；语义见 `settings.py`（根 `.env`/环境变量见键即构造 `ExecutorSettings` 失败）。
+- **RQ/summary 前缀**：`scheduler.py` 对未找到 CLI 捕获 `FileNotFoundError` 时 summary 为 **`agent_cli_not_found:`**（非历史文档中的 `cursor_not_in_path:`）。
+
 ## 修订说明（2026-04-28 task-context-bootstrap spec 为合同真源）
 
 - **单一合同真源**：凡 **folder 路由、`dify_target_key`、`ingest_kind`、Redis 旧快照、薄 Dify 封装、`prompts/AGENTS.txt`、占位闭合** 及 **交付节奏** 与本文历史正文冲突时，以 [2026-04-28-task-context-bootstrap-sample-agent-contract-design.md](2026-04-28-task-context-bootstrap-sample-agent-contract-design.md) **全文**为准。

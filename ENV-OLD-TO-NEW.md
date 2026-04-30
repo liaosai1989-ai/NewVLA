@@ -92,7 +92,7 @@
 - 各类 `*_TTL_SECONDS`（含 `EVENT_SEEN_TTL_SECONDS`、`DOC_SNAPSHOT_TTL_SECONDS`、`DOC_RUNLOCK_TTL_SECONDS` 等）
 - `CURSOR_RUN_TIMEOUT_SECONDS`、`FOLDER_ROUTES_FILE`、`CURSOR_CLI_MODEL`、`CURSOR_CLI_CONFIG_PATH`（**勿**设已废弃的 `CURSOR_CLI_COMMAND`）
 
-**自旧版升级（`webhook` 阻断项）：** 若曾配置 `CURSOR_CLI_COMMAND`（根 `.env` 或 K8s/系统环境变量），**必须**整行/整键删除；并保证服务账户 **PATH 可解析到 `cursor`**。否则 `ExecutorSettings` 构造失败、进程不启动。细节见 `webhook/操作手册.md`。
+**自旧版升级（`webhook` 阻断项）：** 若曾配置 `CURSOR_CLI_COMMAND`（根 `.env` 或 K8s/系统环境变量），**必须**整行/整键删除；并保证服务账户 **PATH** 可解析 **Cursor Agent CLI**（命令名 **`agent`**，非桌面 `cursor`）。否则 `ExecutorSettings` 构造失败、进程不启动。细节见 `webhook/操作手册.md`。
 
 ### 3.5 抓取链路（修订后 `feishu_fetch` 合同侧重）
 

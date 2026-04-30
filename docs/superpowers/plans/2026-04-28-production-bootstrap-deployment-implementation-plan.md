@@ -4,6 +4,8 @@
 
 ## 修订说明
 
+- **2026-04-30（BUG-001）：** **`bootstrap doctor`** 与 **`webhook`** 对齐：PATH 检查 **Cursor Agent CLI**（**`shutil.which("agent")`**），**非** 桌面 `cursor`。下文 **Task 草稿** 若仍出现 **`which("cursor")` / 「需 `cursor`」**，以仓库 **`bootstrap/src/bootstrap/doctor.py`** 为准。
+
 - **2026-04-28（Task 10）：** 文顶 **废止通告** 与 [**production-bootstrap-deployment-design.md** §3.4](../specs/2026-04-28-production-bootstrap-deployment-design.md) **实拷贝**对齐；**junction** 相关 Task **由 workspace-embedded implementation plan 取代**。
 
 - **2026-04-28（联动 task-context 合同 plan）：** `webhook/src/webhook_cursor_executor/settings.py` 须与 [2026-04-28-task-context-bootstrap-sample-agent-contract-implementation-plan.md](./2026-04-28-task-context-bootstrap-sample-agent-contract-implementation-plan.md) **同一合并窗口、prefer 单作者串行**：先落地本 plan **Task 12**（`_env_file()`、`DotEnvSettingsSource`、`test_env_file_uses_vla_workspace_root`），再在同一 PR/commit 链叠加 task-context **Task 2**（`load_routing_config`、`.env`/JSON 分支、`FolderRoute.dify_target_key`）。**禁止**并行 PR 各改一半 `settings.py`。
@@ -20,7 +22,7 @@
 
 **真源口径（与 `2026-04-28-production-bootstrap-deployment-design.md` §2.1 一致）：**
 
-1. **两份根 `.env`，职责分开：** **维护仓库根** `{CLONE_ROOT}/.env` = 本仓库/克隆机上的 **维护与初始化种子**（非执行工作区的运行合同真源）。**执行工作区根** `{WORKSPACE_ROOT}/.env` = **运行合同唯一真源**（`cursor agent` cwd 同层；`VLA_WORKSPACE_ROOT` 指向工作区时 webhook 加载此文件）。
+1. **两份根 `.env`，职责分开：** **维护仓库根** `{CLONE_ROOT}/.env` = 本仓库/克隆机上的 **维护与初始化种子**（非执行工作区的运行合同真源）。**执行工作区根** `{WORKSPACE_ROOT}/.env` = **运行合同唯一真源**（**`agent`** 子进程 `cwd` 同层；`VLA_WORKSPACE_ROOT` 指向工作区时 webhook 加载此文件）。
 2. **初始化时怎么来：** **首次 `materialize-workspace`** 以 **`{CLONE_ROOT}/.env` 整份复制**到工作区根；若无克隆根 `.env`，允许 `.env.example` → 工作区或 `--seed-env`（见 Task 7）。物化完成后，**运行相关键以工作区根 `.env` 为准**。
 3. **初始化时谁读谁写：** **`doctor --workspace`**、生产 webhook（`VLA_WORKSPACE_ROOT` 指向工作区时）等读 **`{WORKSPACE}/.env`**。**运行侧生效的合同键须落在工作区根 `.env`**。若 **`feishu-onboard`** 等交互只写入维护仓库根 `.env`（默认行为），**不会**自动镜像到工作区；须按 **`bootstrap/README.md` 交接清单** 手工合并或复制到工作区根 `.env`（与 spec §4.2、Task 10 一致；后续若改 onboard 写入路径另述）。
 
@@ -910,7 +912,7 @@ def test_doctor_fails_without_markitdown(tmp_path):
     (ws / ".env").write_text("K=v\n", encoding="utf-8")
     clone = tmp_path / "clone"
     clone.mkdir()
-    with patch("bootstrap.doctor.shutil.which", return_value=r"C:\fake\cursor"):
+    with patch("bootstrap.doctor.shutil.which", return_value=r"C:\fake\agent"):
         with patch("bootstrap.doctor._import_markitdown", side_effect=ImportError("no")):
             code = run_doctor(clone_root=clone, workspace=ws)
     assert code != 0
@@ -946,7 +948,7 @@ Expected: `FAIL`
 要点（对照规格）：
 
 1. `sys.version_info < (3, 12)` → 打印错误，返回 1。
-2. `shutil.which("cursor")` 与 `shutil.which("lark-cli")` 缺失 → 打印错误，返回 1。
+2. `shutil.which("agent")` 与 `shutil.which("lark-cli")` 缺失 → 打印错误，返回 1。
 3. **`_import_markitdown()`**（内部 `import_module("markitdown")`）失败 → 打印可复制 `python -m pip install markitdown`，返回 1。
 4. 对 `feishu_fetch`、`dify_upload`、`webhook_cursor_executor`、`feishu_onboard` 依次 `import_module`，失败则打印缺失包与 `pip install -e` 提示，返回 1。
 5. **`{workspace}/.env` 不存在** → 返回 1，提示先 `materialize-workspace`（或 `--seed-env`）生成 **工作区根** `.env`。
@@ -1182,14 +1184,14 @@ git commit -m "feat(webhook): load .env from VLA_WORKSPACE_ROOT for pipeline wor
 
 **优先级：** **plan 收尾必备**（与 **Task 13 P0** 并行层级不同：Task 13 = 产品人机签字口径；Task 14 = **实现合理性回归闸门**）。**依赖 Task 1–13 已全部可用**。
 
-**目的：** 代码 Task 落地后 **无人值守**跑通 **CLI 编排与物化**；**不因**缺失 **`cursor`/`lark-cli`/Redis** 等外部环境而让 merge **误判失败**。本链条 **仍不**替代 **Task 13 / 人机签字**（README 须写明）。
+**目的：** 代码 Task 落地后 **无人值守**跑通 **CLI 编排与物化**；**不因**缺失 **`agent`/`lark-cli`/Redis** 等外部环境而让 merge **误判失败**。本链条 **仍不**替代 **Task 13 / 人机签字**（README 须写明）。
 
 **闸门分两档（避免把「闸门」绑死在 `doctor` 全量外部环境上）：**
 
 | 档位 | 步骤 | 适用 |
 |------|------|------|
 | **A（必选 / merge 最低门槛）** | **`pip install -e .\bootstrap[test]`** → **`bootstrap install-packages`** → **`bootstrap materialize-workspace …`** → **`Copy-Item`** **`docs\superpowers\samples\pipeline-workspace-root.env.example`** **覆盖** **`{WORKSPACE}\.env`** | **PR / CI**：脚本参数 **`-SkipDoctor`**（或等价开关）时 **仅执行到此**，成功则 **`exit 0`**。验证 **`materialize`** 已创建目录树且 **`.env`/`AGENTS.md`**（或与 Task 7 一致的产物）可读即可（脚本可用 **`Test-Path`** 自检）。 |
-| **B（默认全量 / 维护机）** | A + **`bootstrap doctor --workspace $WORKSPACE`** | **依赖 Task 9**：需 **`cursor`、`lark-cli`、`markitdown`**、四包已 **`install-packages`**、可选 Redis；**无 `-SkipDoctor`** 时执行；失败视为 **环境与实现问题须区分**（stderr 已有提示）。 |
+| **B（默认全量 / 维护机）** | A + **`bootstrap doctor --workspace $WORKSPACE`** | **依赖 Task 9**：需 **`agent`（Cursor Agent CLI）`、`lark-cli`、`markitdown`**、四包已 **`install-packages`**、可选 Redis；**无 `-SkipDoctor`** 时执行；失败视为 **环境与实现问题须区分**（stderr 已有提示）。 |
 
 **输入构造原则（全部由本仓库现状推导，勿依赖外来机密）：**
 
