@@ -2,13 +2,15 @@
 
 最小可用的飞书正文抓取模块。凭证归 **onboard / 人工作初始化**；本包只读根 `.env` 中的 `FEISHU_REQUEST_TIMEOUT_SECONDS`、`FEISHU_APP_ID`（用于与 `lark-cli config show` 的 `appId` 比对），不通过子进程环境注入 `FEISHU_APP_SECRET`。
 
+> **`.venv`：** 维护仓 `feishu_fetch/` 下可用 `.venv` 做 **仅本地** pytest/开发；**`.cursor/rules/anti-venv.mdc`**。执行工作区 **禁止** 以 `tools/feishu_fetch/.venv` 作生产 **正式** Python 环境；生产依赖由 **`bootstrap install-workspace-editables`** 或平台镜像安装到 **固定解释器**。
+
 **Lark 子进程**：在代码中直接调用命令名 `lark-cli`（`PATH` 解析，与入轨一致），**不**经 `FeishuFetchSettings`、**不**经 `.env` 配置。若根 `.env` 仍含已废弃键 `LARK_CLI_COMMAND`，`load_feishu_fetch_settings` 会 **立刻报错**（`ValueError`），须删除该键后重试。
 
 ## 边界
 
 - 只接收结构化 `FeishuFetchRequest`
 - 不解析 webhook 事件
-- **管线合同**：生产路径上 **`ingest_kind` 唯一真源**为当次任务 **`task_context.json`**（webhook 写入工作区 `.cursor_task/{run_id}/`，**必填**，见 `docs/superpowers/specs/2026-04-28-task-context-bootstrap-sample-agent-contract-design.md` §2.2、§3）；构造 `FeishuFetchRequest` 时 **`ingest_kind` 必须与 JSON 完全一致**，禁止用 `event_type`、规则文件或惯例顶替
+- **管线合同**：生产路径上 **`ingest_kind` 唯一真源**为当次任务 **`task_context.json`**（webhook 写入工作区 `.cursor_task/{run_id}/`，**必填**，见 `docs/superpowers/specs/2026-04-28-task-context-bootstrap-sample-agent-contract-design.md` §2.2、§3；**`run_id` 与目录一致及样例/生产语义见 §3.1**）；构造 `FeishuFetchRequest` 时 **`ingest_kind` 必须与 JSON 完全一致**，禁止用 `event_type`、规则文件或惯例顶替
 - 不从 URL 猜参数
 - 不自动安装 `lark-cli`、不代替交互式登录
 - 只支持 spec 明确列出的 v1 抓取路径
@@ -98,7 +100,7 @@ print(result.artifact_path)
 
 ## 测试
 
-**L0（默认 CI）：**
+**L0（默认 CI；维护仓克隆根；可无 `.venv`，用 `py -3.12` 亦可）：**
 
 ```powershell
 Set-Location "c:\Cursor WorkSpace\NewVLA\feishu_fetch"

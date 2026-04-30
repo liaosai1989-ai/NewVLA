@@ -6,17 +6,20 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-# 固定命令名，仅由 PATH 解析（不经 .env / 配置写可执行路径）；与 onboard `lark-cli` 约定一致。
-_CURSOR_CLI = "cursor"
+# Headless 管线必须使用 **Cursor Agent CLI**（官方安装后命令名为 `agent`），
+# 与桌面应用启动器 `cursor`（Electron）不是同一个可执行文件。
+# 见 https://cursor.com/docs/cli/overview — Windows: irm 'https://cursor.com/install?win32=true' | iex
+_AGENT_CLI = "agent"
 
 
-def _resolve_cursor_exe() -> str:
-    w = shutil.which(_CURSOR_CLI)
+def _resolve_agent_exe() -> str:
+    w = shutil.which(_AGENT_CLI)
     if w:
         return w
     raise FileNotFoundError(
-        f"PATH 中未找到命令 {_CURSOR_CLI!r}。请安装 Cursor CLI，"
-        f"将可执行文件所在目录加入用户或系统 PATH 后重开服务/终端。"
+        f"PATH 中未找到命令 {_AGENT_CLI!r}（Cursor Agent CLI）。"
+        f"桌面版 `cursor` 不能替代：webhook 需要 `agent -p` 非交互模式。"
+        f"安装见 Cursor 文档 CLI 章节，安装后把 agent 所在目录加入运行 webhook/RQ 的账户 PATH。"
     )
 
 
@@ -49,12 +52,24 @@ def launch_cursor_agent(
     model: str,
     timeout_seconds: int,
 ) -> CursorRunResult:
-    exe = _resolve_cursor_exe()
+    exe = _resolve_agent_exe()
     completed = subprocess.run(
-        [exe, "agent", "--model", model, prompt_text],
+        [
+            exe,
+            "-p",
+            "--force",
+            "--trust",
+            "--workspace",
+            str(cwd.resolve()),
+            "--model",
+            model,
+            prompt_text,
+        ],
         cwd=str(cwd),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout_seconds,
     )
     return CursorRunResult(

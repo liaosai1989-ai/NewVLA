@@ -1,9 +1,14 @@
 # Production Bootstrap 部署实现计划
 
+> **废止与接替（2026-04-28，NTH-008 / Task 10）：** 本文 **Architecture** 中 **`tools/*` Windows junction**、正文 **Task 6 `junction.py`**、CLI **`--no-junction-tools`**、验收矩阵「**实机 + junction**」等叙述 **已废止**。**现行实现与验收合同**以 [**2026-04-28-workspace-embedded-runtime-implementation-plan.md**](./2026-04-28-workspace-embedded-runtime-implementation-plan.md) 为准：**实拷贝** **`vla_env_contract/`**、**`runtime/webhook/`**、**`tools/*`**；**`bootstrap install-workspace-editables`**；**`bootstrap probe`**；**`GET /health`**。下文历史任务块（含 junction 代码片段）**仅供对照**，**不得**当作当前合并闸门或签字前提。
+
 ## 修订说明
+
+- **2026-04-28（Task 10）：** 文顶 **废止通告** 与 [**production-bootstrap-deployment-design.md** §3.4](../specs/2026-04-28-production-bootstrap-deployment-design.md) **实拷贝**对齐；**junction** 相关 Task **由 workspace-embedded implementation plan 取代**。
 
 - **2026-04-28（联动 task-context 合同 plan）：** `webhook/src/webhook_cursor_executor/settings.py` 须与 [2026-04-28-task-context-bootstrap-sample-agent-contract-implementation-plan.md](./2026-04-28-task-context-bootstrap-sample-agent-contract-implementation-plan.md) **同一合并窗口、prefer 单作者串行**：先落地本 plan **Task 12**（`_env_file()`、`DotEnvSettingsSource`、`test_env_file_uses_vla_workspace_root`），再在同一 PR/commit 链叠加 task-context **Task 2**（`load_routing_config`、`.env`/JSON 分支、`FolderRoute.dify_target_key`）。**禁止**并行 PR 各改一半 `settings.py`。
 - **2026-04-28：** 文件夹路由真源以 task-context spec §7 为准（`FEISHU_FOLDER_ROUTE_KEYS` + `feishu_folder_group_keys` 各组键，**推荐含 `NAME`**，与 `onboard/env_contract` 一致）。BUG-005 收口后，本文内「仅 JSON / 双写」类表述以 task-context 批次修订为准；不在本 plan 重复实现 §7 路由逻辑。
+- **2026-04-28（BUG-007）：** Windows 下克隆路径某段含空格时，若 **`pip install -e`** 的 editable 目标被解析为**子包绝对路径**，同源 **`file:../vla_env_contract`** 等可能被 pip 错位展开。**缓解：** `install_packages.install_all` 对每个子包 **`cwd=<pkg>` + `pip install -e .`**；**工作区** **`bootstrap install-workspace-editables`**；**`run-unattended-acceptance.ps1`** 在 **`bootstrap` 目录内**执行 **`pip install -e ".[test]"`**（`Push-Location`/`Pop-Location`）。复现与验证命令见 **`BugList.md` BUG-007**；**`bootstrap/README.md`** 含人手首装备注。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -11,7 +16,7 @@
 
 **与 task-context / feishu_fetch 合同同期交付（本期须勾选）：** 按 `docs/superpowers/specs/2026-04-28-task-context-bootstrap-sample-agent-contract-design.md` 文首 **「本期实现范围」** 与 **「单次交付，禁止拆分」**，**须**在同一合并批次 / 验收窗口内完成：以 **`webhook_cursor_executor` 为主**的 **`ingest_kind`** 写入 **`DocumentSnapshot`、`TaskContext`、落盘 `task_context.json`**（`app` / `worker` / `scheduler`、RQ 入参、解析规则、单测、§7.6 Redis 策略），以及该 spec §8 / §9 / §10 / `feishu_fetch` README 等所列**同批**条目；**不得**拆分 PR 使 §7–§10 主线悬空，**不因**本 plan 文件名侧重 bootstrap 而将 `ingest_kind` 或路由收口推迟到未命名后续批次。
 
-**Architecture:** 单机统一 Python（≥3.12，无 venv）、`bootstrap` 仅依赖标准库 + `redis`（doctor 连通性）。`materialize-workspace` 在 **`--workspace` 目录根** 落 **运行合同 `.env`**（见下「真源口径」）、同步 `prompts/` → `AGENTS.md` + `rules/**`，`tools/dify_upload` 与 `tools/feishu_fetch` 采用 **Windows 目录联接（junction）** 指向克隆根同名目录（规格 §3.4 策略 A）。**不**再把「维护仓库克隆根」当作 **运行侧** 合同 `.env` 的唯一落点。
+**Architecture（现行）：** 单机统一 Python（≥3.12，无 venv）、`bootstrap` 依赖标准库 + `redis` + **`vla-env-contract`**（`file:`）。`materialize-workspace` 在 **`--workspace` 目录根** 落 **运行合同 `.env`**、同步 `prompts/` → `AGENTS.md` + `rules/**`，并 **递归拷贝** **`vla_env_contract/`**、**`runtime/webhook/`**、**`tools/dify_upload`**、**`tools/feishu_fetch`**（**不**使用 junction；见 **workspace-embedded** implementation plan）。生产签字含 **`bootstrap install-workspace-editables --workspace`** 与 **`bootstrap probe`**。**不**再把「维护仓库克隆根」当作 **运行侧** 合同 `.env` 的唯一落点。
 
 **真源口径（与 `2026-04-28-production-bootstrap-deployment-design.md` §2.1 一致）：**
 
@@ -23,7 +28,7 @@
 
 **`.cursor/rules/env.mdc`：** 已写入双 `.env` 语境（维护仓 vs 工作区）。**根 `AGENTS.md` / `prompts/AGENTS.txt`：** 落地 bootstrap 后须 **renew** onboard 相关句，明示 **运行真源 = 工作区根 `.env`**、onboard 写维护仓后须 **同步到工作区**（与 spec §4.2 一致）。
 
-**Tech Stack:** Python 3.12+、setuptools、`redis` PyPI、`pytest`（仅测试依赖）、Windows `mklink /J`（联接）
+**Tech Stack:** Python 3.12+、setuptools、`redis` PyPI、`pytest`（仅测试依赖）；物化为 **`shutil.copytree`** + ignore（**非** junction）
 
 **路径约定（全文一致）：**
 
@@ -36,7 +41,7 @@
 
 1. 用户 **clone 或拷贝** 本维护仓库到本机任意目录（`{CLONE_ROOT}`）。
 2. 打开 **PowerShell**，`Set-Location` 到该目录，执行 **一条启动链**（先 `pip install -e .\bootstrap[…]`，再 **`bootstrap interactive-setup`**，**Task 13，P0 必含**）。
-3. 在终端里 **按提示交互输入**：维护仓库根（默认 `Path.cwd()` 且须通过 `assert_clone_root_looks_sane`）、执行工作区根绝对路径、可选用交互选项开启 **`--dry-run` 预览** / **`--no-junction-tools`** 等；程序内部依次调用 **`install_packages` → `materialize_workspace` → 暂停并提示用编辑器打开工作区 `.env` → `run_doctor`**（与 spec §2.1 顺序一致）。**`feishu-onboard`**、**`VLA_WORKSPACE_ROOT`**、起 Redis/webhook 仍为人工或脚本后续步（交互里须打印简短提醒，不强行塞进同一子进程）。
+3. 在终端里 **按提示交互输入**：维护仓库根（默认 `Path.cwd()` 且须通过 `assert_clone_root_looks_sane`）、执行工作区根绝对路径、可选用 **`--dry-run` 预览**；程序内部依次调用 **`install_packages` → `materialize_workspace` → 工作区 `install-workspace-editables`（四轮 pip）→ 暂停并提示用编辑器打开工作区 `.env` → `run_doctor` → `probe --no-http`（进程内）**（与现行 `bootstrap/README.md` 一致）。**`feishu-onboard`**、**`VLA_WORKSPACE_ROOT`**、起 Redis/webhook 仍为人工或脚本后续步（交互里须打印简短提醒，不强行塞进同一子进程）。
 
 **与分立子命令关系：** `doctor` / `install-packages` / `materialize-workspace` **不**单独构成与人验收等价的入口；README 与 spec §7 均以 **上述 1→2→3** 为签字路径。文末「分步命令」**仅**供自动化、CI、开发排障对照，**非**验收替代路径。
 
@@ -59,8 +64,8 @@
 | `bootstrap/src/bootstrap/workspace_path.py` | §3.2 路径段 ASCII/禁字符校验；克隆根与工作区 **互不嵌套** |
 | `bootstrap/src/bootstrap/routing_json.py` | 读 JSON → `pipeline_workspace.path`，**仅**供与 **`Path(--workspace)`** 漂移 WARNING（非门禁） |
 | `.env.example`（仓库根，模板） | 注释说明：**物化后文件位于工作区根**，工作区路径 **仅**由 `bootstrap --workspace` 指定，**勿**增加 `PIPELINE_WORKSPACE_PATH` |
-| `bootstrap/src/bootstrap/junction.py` | Windows 下创建/校验 junction；非 Windows 抛明确错误（本规格 P0 为 Windows） |
-| `bootstrap/src/bootstrap/materialize.py` | §3.4 物化（**不**写路径重复键） |
+| `bootstrap/src/bootstrap/copy_trees.py` | 物化递归拷贝 + ignore（**已替代** 历史 `junction.py`） |
+| `bootstrap/src/bootstrap/materialize.py` | §3.4 物化：实拷贝 **`vla_env_contract`**、**`runtime/webhook`**、**`tools/*`**（**不**写路径重复键） |
 | `bootstrap/src/bootstrap/doctor.py` | §5.1 自检聚合、退出码 |
 | `bootstrap/src/bootstrap/install_packages.py` | 对四子包 `pip install -e` + `pip install markitdown` |
 | `bootstrap/tests/test_cli.py` | Task 1 / Task 13：`--help`、入口冒烟 |
@@ -68,8 +73,8 @@
 | `bootstrap/tests/test_paths.py` | 克隆根推导、`assert_clone_root_looks_sane` |
 | `bootstrap/tests/test_env_dotenv.py` | `.env` 解析 |
 | `bootstrap/tests/test_routing_json.py` | JSON 提取 |
-| `bootstrap/tests/test_junction.py` | Windows junction（非 Windows `skipif`） |
-| `bootstrap/tests/test_materialize.py` | 物化目录树（junction 用 `pytest.mark.skipif` 非 Windows） |
+| `bootstrap/tests/test_materialize.py` | 物化目录树（实拷贝、**`runtime/webhook`**、TOML 路径修补） |
+| `bootstrap/tests/test_probe.py` | `bootstrap probe` 静态段 / HTTP 段（mock） |
 | `bootstrap/tests/test_install_packages.py` | mock `pip` 调用链 |
 | `bootstrap/tests/test_doctor.py` | mock `redis`、mock `shutil.which`、临时目录 |
 | `bootstrap/tests/test_interactive_setup.py` | Task 13：mock `input`、调用顺序 |
@@ -1199,7 +1204,7 @@ git commit -m "feat(webhook): load .env from VLA_WORKSPACE_ROOT for pipeline wor
 
 - **`bootstrap/scripts/run-unattended-acceptance.ps1`**（UTF-8 BOM 或脚本头注释标明编码）：顺序执行（仅用 **`;`** 或分行，**勿** bash `` `&&` ``）；支持 **`-SkipDoctor`**：
   1. **`Set-Location <CLONE_ROOT>`**
-  2. **`python -m pip install -e ".\bootstrap[test]"`**（若已在同一 venv 装过可跳过重复安装 —— 脚本可用 **`pip show newvla-production-bootstrap`** 判断）
+  2. **`Push-Location .\bootstrap`** → **`python -m pip install -e ".[test]"`** → **`Pop-Location`**（**BUG-007**；与已实现脚本一致。若已在同一 venv 装过可跳过 —— 可用 **`pip show newvla-production-bootstrap`** 判断）
   3. **`bootstrap install-packages`**
   4. **`bootstrap materialize-workspace --workspace $WORKSPACE --clone-root $CLONE_ROOT --no-junction-tools`** —— **此步创建 `$WORKSPACE` 目录树**（若路径尚不存在）；**勿**在本步之前对 **`$WORKSPACE`** 手动 **`mkdir`**（除非脚本仅为清空残留）。
   5. **`Copy-Item`** `docs\superpowers\samples\pipeline-workspace-root.env.example` → **`$WORKSPACE\.env`**（**覆盖**；理由见上表）。

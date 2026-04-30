@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from vla_env_contract import dify_group_keys
+
 _RE_ENV_KEY = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _MAX_TOKEN_LEN = 256
 
@@ -58,8 +60,6 @@ def validate_parent_folder_token(token: str) -> str:
 
 
 def dify_group_present(env: dict[str, str], dify_target_key: str) -> None:
-    from .env_contract import dify_group_keys
-
     for key in dify_group_keys(dify_target_key):
         v = (env.get(key) or "").strip()
         if not v:

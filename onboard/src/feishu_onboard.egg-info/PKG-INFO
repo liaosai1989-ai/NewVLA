@@ -3,6 +3,7 @@ Name: feishu-onboard
 Version: 0.1.0
 Requires-Python: >=3.10
 Requires-Dist: httpx<0.29,>=0.27
+Requires-Dist: vla-env-contract @ file:../vla_env_contract
 Provides-Extra: test
 Requires-Dist: pytest<9.0,>=8.3; extra == "test"
 Requires-Dist: pytest-httpx<0.32,>=0.30; extra == "test"

@@ -6,8 +6,12 @@ import time
 
 from pydantic import ValidationError
 from redis import Redis
+from redis.exceptions import WatchError
 
 logger = logging.getLogger(__name__)
+
+# ingest 去抖键 TTL 须大于 debounce 窗口，避免 flush 前键过期
+INGEST_DEBOUNCE_KEY_TTL_SECONDS = 900
 
 from webhook_cursor_executor.models import (
     DocumentSnapshot,
@@ -56,6 +60,52 @@ class RedisStateStore:
     def _run_result_key(self, run_id: str) -> str:
         return f"webhook:run:result:{run_id}"
 
+    def _ingest_debounce_token_key(self, document_id: str) -> str:
+        return f"webhook:ingest:debounce:token:{document_id}"
+
+    def _ingest_debounce_payload_key(self, document_id: str) -> str:
+        return f"webhook:ingest:debounce:payload:{document_id}"
+
+    def write_ingest_debounce(
+        self,
+        *,
+        document_id: str,
+        token: str,
+        payload_json: str,
+    ) -> None:
+        ex = INGEST_DEBOUNCE_KEY_TTL_SECONDS
+        self.redis.set(self._ingest_debounce_token_key(document_id), token, ex=ex)
+        self.redis.set(self._ingest_debounce_payload_key(document_id), payload_json, ex=ex)
+
+    def take_ingest_debounce_payload_if_token(
+        self,
+        *,
+        document_id: str,
+        token: str,
+    ) -> str | None:
+        """仅当 token 仍匹配时删除 token+payload 并返回 payload JSON；否则返回 None。"""
+        tkey = self._ingest_debounce_token_key(document_id)
+        pkey = self._ingest_debounce_payload_key(document_id)
+        for _ in range(8):
+            try:
+                self.redis.watch(tkey, pkey)
+                if self.redis.get(tkey) != token:
+                    self.redis.unwatch()
+                    return None
+                blob = self.redis.get(pkey)
+                pipe = self.redis.pipeline()
+                pipe.multi()
+                pipe.delete(tkey, pkey)
+                pipe.execute()
+                return blob if isinstance(blob, str) else None
+            except WatchError:
+                continue
+        logger.warning(
+            "ingest_debounce_take_aborted document_id=%s after WatchError retries",
+            document_id,
+        )
+        return None
+
     def try_mark_event_seen(self, event_id: str) -> bool:
         return bool(
             self.redis.set(
@@ -93,6 +143,13 @@ class RedisStateStore:
         if "ingest_kind" not in data:
             logger.error("snapshot_missing_ingest_kind document_id=%s", document_id)
             return None
+        if "resource_plane" not in data:
+            data = {
+                **data,
+                "resource_plane": (
+                    "cloud_docx" if data.get("ingest_kind") == "cloud_docx" else "drive_file"
+                ),
+            }
         if "dify_target_key" not in data:
             data = {**data, "dify_target_key": "DEFAULT"}
         try:
@@ -145,6 +202,10 @@ class RedisStateStore:
             context.model_dump_json(),
             ex=self.run_context_ttl_seconds,
         )
+
+    def load_run_context(self, run_id: str) -> RunContext | None:
+        raw = self.redis.get(self._run_context_key(run_id))
+        return None if raw is None else RunContext.model_validate_json(raw)
 
     def clear_run_context(self, run_id: str) -> None:
         self.redis.delete(self._run_context_key(run_id))

@@ -13,11 +13,12 @@ from webhook_cursor_executor.settings import (
 def test_settings_defaults_and_route_loading(tmp_path, monkeypatch):
     ws = tmp_path / "iso_ws"
     ws.mkdir()
-    (ws / ".env").write_text(
+    env_path = ws / ".env"
+    env_path.write_text(
         "DOC_RUNLOCK_TTL_SECONDS=10800\nCURSOR_RUN_TIMEOUT_SECONDS=7200\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("VLA_WORKSPACE_ROOT", str(ws))
+    monkeypatch.setattr(settings_mod, "_env_file", lambda: env_path.resolve())
     settings_mod.get_executor_settings.cache_clear()
 
     routes_file = tmp_path / "routes.json"
@@ -56,12 +57,12 @@ def test_env_file_rejects_cursor_cli_command_key(tmp_path):
         _raise_if_env_file_bans_cursor_cli_command(path=p)
 
 
-def test_env_file_uses_vla_workspace_root(tmp_path, monkeypatch):
+def test_env_file_loads_from_dotenv_path(monkeypatch, tmp_path):
     ws = tmp_path / "workspace"
     ws.mkdir()
     env_f = ws / ".env"
     env_f.write_text("REDIS_URL=redis://from-workspace-env:9/0\n", encoding="utf-8")
-    monkeypatch.setenv("VLA_WORKSPACE_ROOT", str(ws))
+    monkeypatch.setattr(settings_mod, "_env_file", lambda: env_f.resolve())
     settings_mod.get_executor_settings.cache_clear()
     st = ExecutorSettings()
     assert st.redis_url == "redis://from-workspace-env:9/0"
@@ -72,11 +73,12 @@ def test_settings_reject_cursor_cli_command_in_environ(
 ) -> None:
     ws = tmp_path / "iso_ws2"
     ws.mkdir()
-    (ws / ".env").write_text(
+    env_path = ws / ".env"
+    env_path.write_text(
         "DOC_RUNLOCK_TTL_SECONDS=10800\nCURSOR_RUN_TIMEOUT_SECONDS=7200\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("VLA_WORKSPACE_ROOT", str(ws))
+    monkeypatch.setattr(settings_mod, "_env_file", lambda: env_path.resolve())
     settings_mod.get_executor_settings.cache_clear()
 
     routes = tmp_path / "routes.json"
@@ -117,7 +119,7 @@ def test_load_routing_from_env_keys(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("VLA_WORKSPACE_ROOT", str(ws))
+    monkeypatch.setattr(settings_mod, "_env_file", lambda: env_file.resolve())
     settings_mod.get_executor_settings.cache_clear()
     bad_json = tmp_path / "bad.json"
     bad_json.write_text("{}", encoding="utf-8")
@@ -133,11 +135,12 @@ def test_load_routing_from_env_keys(tmp_path, monkeypatch):
 def test_load_routing_json_fallback_without_route_keys(tmp_path, monkeypatch, caplog):
     ws = tmp_path / "json_ws"
     ws.mkdir()
-    (ws / ".env").write_text(
+    env_path = ws / ".env"
+    env_path.write_text(
         "DOC_RUNLOCK_TTL_SECONDS=10800\nCURSOR_RUN_TIMEOUT_SECONDS=7200\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("VLA_WORKSPACE_ROOT", str(ws))
+    monkeypatch.setattr(settings_mod, "_env_file", lambda: env_path.resolve())
     monkeypatch.delenv("FEISHU_FOLDER_ROUTE_KEYS", raising=False)
     settings_mod.get_executor_settings.cache_clear()
 

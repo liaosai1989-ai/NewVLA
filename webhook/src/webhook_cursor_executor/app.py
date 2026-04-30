@@ -16,6 +16,12 @@ from fastapi.responses import JSONResponse
 from redis import Redis
 from rq import Queue
 
+from webhook_cursor_executor.drive_doc_type import normalize_drive_doc_type
+from webhook_cursor_executor.feishu_drive_subscribe import (
+    maybe_per_doc_subscribe_on_created_in_folder,
+    resolve_subscribe_file_type_for_created_in_folder,
+)
+from webhook_cursor_executor.feishu_resource_plane import resolve_drive_file_ingest
 from webhook_cursor_executor.ingest_kind import derive_ingest_kind
 from webhook_cursor_executor.models import DocumentSnapshot
 from webhook_cursor_executor.settings import (
@@ -85,6 +91,37 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="Webhook Cursor Executor", version="0.1.0")
 
+    @app.get("/health")
+    async def health() -> JSONResponse:
+        return JSONResponse({"status": "ok"}, status_code=200)
+
+    @app.get("/oauth/callback")
+    async def oauth_callback(request: Request) -> JSONResponse:
+        """浏览器 OAuth 回调（协作者用户授权）。与事件 webhook 路径无关。"""
+        q = request.query_params
+        err = (q.get("error") or "").strip()
+        if err:
+            return JSONResponse(
+                {
+                    "error": err,
+                    "error_description": (q.get("error_description") or "").strip(),
+                },
+                status_code=400,
+            )
+        code = (q.get("code") or "").strip()
+        state = (q.get("state") or "").strip()
+        return JSONResponse(
+            {
+                "ok": True,
+                "code": code or None,
+                "state": state or None,
+                "hint": (
+                    "复制 code 后：py feishu_delegate_oauth_helper.py exchange --code <code> "
+                    "（与 print-url 同一脚本路径旁的 .env）"
+                ),
+            }
+        )
+
     @app.post(settings.feishu_webhook_path)
     async def feishu_webhook(request: Request) -> JSONResponse:
         raw = await request.body()
@@ -147,10 +184,30 @@ def create_app(
                     },
                     status_code=400,
                 )
-            try:
-                ik = derive_ingest_kind(event, header)
-            except ValueError as exc:
-                return JSONResponse({"error": str(exc)}, status_code=400)
+            if event_type.startswith("drive.file."):
+                ik, rq_doc_type, resource_plane = resolve_drive_file_ingest(
+                    event, settings, event_type=event_type
+                )
+            else:
+                try:
+                    ik = derive_ingest_kind(event, header)
+                except ValueError as exc:
+                    return JSONResponse({"error": str(exc)}, status_code=400)
+                resource_plane = (
+                    "cloud_docx" if ik == "cloud_docx" else "drive_file"
+                )
+                rq_doc_type = (
+                    normalize_drive_doc_type(event, event_type=event_type)
+                    if ik == "drive_file"
+                    else None
+                )
+            sub_kw: dict[str, str] = {}
+            if event_type == "drive.file.created_in_folder_v1":
+                sft = resolve_subscribe_file_type_for_created_in_folder(
+                    event, ik, rq_doc_type
+                )
+                if sft:
+                    sub_kw["drive_subscribe_file_type"] = sft
             queue.enqueue(
                 "ingest_feishu_document_event",
                 event_id=event_id,
@@ -158,16 +215,40 @@ def create_app(
                 event_type=event_type,
                 folder_token="",
                 ingest_kind=ik,
+                doc_type=rq_doc_type,
+                resource_plane=resource_plane,
+                **sub_kw,
             )
             return JSONResponse({"code": 0, "msg": "ok"})
 
         route = resolve_folder_route(routing_config, folder_token)
         if route is None:
             return JSONResponse({"error": "folder_route_not_resolved"}, status_code=400)
-        try:
-            ingest_kind = derive_ingest_kind(event, header)
-        except ValueError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
+        if event_type.startswith("drive.file."):
+            ingest_kind, snap_doc_type, resource_plane = resolve_drive_file_ingest(
+                event, settings, event_type=event_type
+            )
+        else:
+            try:
+                ingest_kind = derive_ingest_kind(event, header)
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            resource_plane = (
+                "cloud_docx" if ingest_kind == "cloud_docx" else "drive_file"
+            )
+            snap_doc_type = (
+                normalize_drive_doc_type(event, event_type=event_type)
+                if ingest_kind == "drive_file"
+                else None
+            )
+        maybe_per_doc_subscribe_on_created_in_folder(
+            settings=settings,
+            event=event,
+            event_type=event_type,
+            document_id=document_id,
+            ingest_kind=ingest_kind,
+            doc_type=snap_doc_type,
+        )
         if not state_store.try_mark_event_seen(event_id):
             return JSONResponse({"code": 0, "msg": "duplicate"})
 
@@ -185,6 +266,8 @@ def create_app(
             version=version,
             dify_target_key=route.dify_target_key,
             ingest_kind=ingest_kind,
+            resource_plane=resource_plane,
+            doc_type=snap_doc_type,
         )
         state_store.save_snapshot(snapshot)
         queue.enqueue("schedule_document_job", document_id=document_id, version=version)

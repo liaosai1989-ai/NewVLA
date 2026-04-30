@@ -2,6 +2,8 @@
 
 最小可用的 Dify CSV 上传模块。
 
+> **`.venv`：** 下述 **`uv venv` / `.\.venv\...` 仅用于维护仓库克隆根**本地调试、单测；**`.cursor/rules/anti-venv.mdc`**。执行工作区 **禁止** 以 `tools/dify_upload/.venv` 作生产工具 **正式** 运行时。
+
 ## 边界
 
 - 调用方必须先提供完整 `api_base`、`api_key`、`dataset_id`（`api_key` 在多数部署下为**实例级**；与 `dataset_id` 分工：谁有权访问、写到哪个数据集）
@@ -10,7 +12,7 @@
 - 本模块只处理 CSV 上传
 - 上传参数固定为当前管线已验证合同，不开放额外配置
 
-## 安装
+## 安装（维护仓调试）
 
 ```powershell
 cd c:\WorkPlace\NewVLA\dify_upload
@@ -54,7 +56,7 @@ print(result.batch)
 - `DifyRequestError`：本地文件问题、网络问题、HTTP 4xx/5xx
 - `DifyResponseError`：非 JSON、JSON 结构异常、业务码失败、关键字段缺失
 
-## 测试
+## 测试（维护仓）
 
 ```powershell
 cd c:\WorkPlace\NewVLA\dify_upload

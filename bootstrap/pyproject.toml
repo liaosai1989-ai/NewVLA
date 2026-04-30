@@ -8,7 +8,9 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
   "redis>=6.0,<7.0",
-  "feishu-onboard @ file:../onboard",
+  # Resolved from repo root when: py -m pip install -e ".\bootstrap[test]" (CWD = CLONE_ROOT).
+  # file:../vla_env_contract wrongly resolves ../ from CWD → parent of clone root (BUG on Windows).
+  "vla-env-contract @ file:./vla_env_contract",
 ]
 [project.scripts]
 bootstrap = "bootstrap.cli:main"
@@ -22,5 +24,5 @@ test = [
 where = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "../onboard/src"]
+pythonpath = ["src", "../vla_env_contract/src"]
 testpaths = ["tests"]

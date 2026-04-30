@@ -25,6 +25,7 @@ def test_event_seen_snapshot_and_run_result_roundtrip():
         received_at="2026-04-26T10:00:00Z",
         version=3,
         ingest_kind="drive_file",
+        resource_plane="drive_file",
     )
     store.save_snapshot(snapshot)
     store.save_run_result(
@@ -91,3 +92,32 @@ def test_load_snapshot_injects_default_dify_target_key_when_missing():
     sn = store.load_snapshot(doc_id)
     assert sn is not None
     assert sn.dify_target_key == "DEFAULT"
+    assert sn.resource_plane == "drive_file"
+
+
+def test_load_snapshot_backfills_resource_plane_from_ingest_kind():
+    redis_client = FakeStrictRedis(decode_responses=True)
+    store = RedisStateStore(redis_client=redis_client)
+    doc_id = "legacy_no_plane"
+    body = {
+        "event_id": "e1",
+        "document_id": doc_id,
+        "folder_token": "f1",
+        "event_type": "drive.file.updated_v1",
+        "qa_rule_file": "r.md",
+        "dataset_id": "ds",
+        "workspace_path": "C:\\ws",
+        "cursor_timeout_seconds": 7200,
+        "received_at": "2026-01-01T00:00:00Z",
+        "version": 1,
+        "ingest_kind": "cloud_docx",
+        "dify_target_key": "DEFAULT",
+    }
+    redis_client.set(
+        store._snapshot_key(doc_id),
+        json.dumps(body),
+        ex=store.snapshot_ttl_seconds,
+    )
+    sn = store.load_snapshot(doc_id)
+    assert sn is not None
+    assert sn.resource_plane == "cloud_docx"

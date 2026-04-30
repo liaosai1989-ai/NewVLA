@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+
+def install_workspace_editables(workspace: Path) -> None:
+    """BUG-007: pip install -e . per package with cwd=package (strict order)."""
+    ws = workspace.resolve()
+    dirs: tuple[Path, ...] = (
+        ws / "vla_env_contract",
+        ws / "runtime" / "webhook",
+        ws / "tools" / "dify_upload",
+        ws / "tools" / "feishu_fetch",
+    )
+    for d in dirs:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-e", "."],
+            check=True,
+            cwd=str(d),
+        )
+    # Installing runtime/webhook pulls vla-env-contract as a wheel dep; pip may leave
+    # vla_env_contract resolving under site-packages (doctor plan A.3 FAIL). Re-pin editable.
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-e", "."],
+        check=True,
+        cwd=str(ws / "vla_env_contract"),
+    )

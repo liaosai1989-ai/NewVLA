@@ -7,8 +7,9 @@ from typing import Callable
 
 import httpx
 
+from vla_env_contract import feishu_folder_group_keys, route_keys_list_key
+
 from . import env_store
-from .env_contract import feishu_folder_group_keys, route_keys_list_key
 from .env_paths import repo_root, root_dotenv_path
 from .feishu_client import FeishuApiError, FeishuOnboardClient, fetch_tenant_access_token
 from .lark_cli import (

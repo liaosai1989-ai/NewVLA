@@ -11,7 +11,7 @@ CREATE_FOLDER_URL = "https://open.feishu.cn/open-apis/drive/v1/files/create_fold
 DRIVE_V1_PERMISSION_MEMBERS_TMPL = "https://open.feishu.cn/open-apis/drive/v1/permissions/{token}/members"
 # 与 env 默认一致，供单测/调用方白名单
 _FOLDER_DELEGATE_PERMS = frozenset({"view", "edit", "full_access"})
-# 夹级订阅：使 file.created_in_folder_v1 可投递，后续链路上再对新建 docx 做文档级 subscribe
+# 夹级订阅：使 file.created_in_folder_v1 可投递；对 new file_token 的 per-doc subscribe 在 webhook 侧（created_in_folder 事件）完成
 DRIVE_V1_FILE_SUBSCRIBE_TMPL = "https://open.feishu.cn/open-apis/drive/v1/files/{token}/subscribe"
 # 应用/用户身份下「我的空间」根；create_folder 在部分租户不接受 folder_token 空串时需用显式根 token
 ROOT_FOLDER_META_URL = "https://open.feishu.cn/open-apis/drive/explorer/v2/root_folder/meta"

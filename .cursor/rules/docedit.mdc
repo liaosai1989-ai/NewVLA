@@ -1,9 +1,7 @@
 ---
 description: Plan/Spec 文档编辑规范：新建前交叉 BugList/NiceToHave、落地状态回写、未落地直接改正文、已落地保留原文并在顶部追加修订说明
-globs: docs/superpowers/**/*.md
 alwaysApply: false
 ---
-
 # Plan 与 Spec 文档编辑
 
 ## 新建 Spec / Plan

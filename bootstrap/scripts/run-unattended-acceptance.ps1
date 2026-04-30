@@ -2,12 +2,19 @@
 # bootstrap Task 14 — unattended acceptance gate (not human sign-off substitute)
 # Python >= 3.12 (bootstrap/pyproject.toml). Default interpreter: resolve via `py -3.12` when `-PythonExe` omitted; override with -PythonExe if needed.
 # -Workspace must satisfy spec §3.2 (ASCII segments, no spaces). Paths under dirs like "...\Cursor WorkSpace\..." FAIL validation—use e.g. $env:TEMP\...\folder.
+#
+# Frozen sequence (embedded-runtime plan Task 5): pip install bootstrap[test] -> (optional clone install-packages)
+# -> materialize-workspace -> install-workspace-editables -> sample .env -> doctor -> probe
+# Default SkipInstallPackages=$true: skips clone-side install-packages (avoids editable prefix clash with workspace doctor); use -SkipInstallPackages:$false to run it.
 
 param(
     [switch]$SkipDoctor,
     [string]$Workspace = "",
     [string]$CloneRoot = "",
-    [string]$PythonExe = ""
+    [string]$PythonExe = "",
+    [bool]$SkipInstallPackages = $true,
+    [switch]$SkipProbe,
+    [switch]$SkipProbeHttp
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,13 +56,26 @@ $Workspace = $Workspace.Trim()
 
 Set-Location $CloneRoot
 
-& $PythonExe -m pip install -e ".\bootstrap[test]"
+# BUG-007: install from inside bootstrap with "-e ." — not ".\bootstrap[test]" from clone root
+# when paths contain spaces (pip file: dependency resolution).
+Push-Location (Join-Path $CloneRoot "bootstrap")
+try {
+    & $PythonExe -m pip install -e ".[test]"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+finally {
+    Pop-Location
+}
+
+if (-not $SkipInstallPackages) {
+    & $PythonExe -m bootstrap install-packages --clone-root $CloneRoot
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+& $PythonExe -m bootstrap materialize-workspace --workspace $Workspace --clone-root $CloneRoot --force
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-& $PythonExe -m bootstrap install-packages --clone-root $CloneRoot
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-& $PythonExe -m bootstrap materialize-workspace --workspace $Workspace --clone-root $CloneRoot --no-junction-tools --force
+& $PythonExe -m bootstrap install-workspace-editables --workspace $Workspace
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $sample = Join-Path $CloneRoot "docs\superpowers\samples\pipeline-workspace-root.env.example"
@@ -69,6 +89,21 @@ Copy-Item -LiteralPath $sample -Destination $wsEnv -Force
 
 if (-not $SkipDoctor) {
     & $PythonExe -m bootstrap doctor --workspace $Workspace --clone-root $CloneRoot
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+if (-not $SkipProbe) {
+    # Doctor runs above when -SkipDoctor is unset; probe only adds HTTP / no-http (+ optional RQ warn), not a second doctor.
+    $probeArgs = @(
+        "-m", "bootstrap", "probe",
+        "--workspace", $Workspace,
+        "--clone-root", $CloneRoot,
+        "--skip-doctor"
+    )
+    if ($SkipProbeHttp) {
+        $probeArgs += "--no-http"
+    }
+    & $PythonExe @probeArgs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 

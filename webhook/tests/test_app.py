@@ -1,3 +1,4 @@
+import pytest
 from fakeredis import FakeStrictRedis
 from fastapi.testclient import TestClient
 
@@ -18,13 +19,84 @@ class FakeQueue:
     def enqueue(self, job_name: str, **kwargs) -> None:
         self.calls.append((job_name, kwargs))
 
+def test_health_endpoint_returns_ok_no_redis():
+    settings = ExecutorSettings(
+        feishu_encrypt_key="",
+        feishu_verification_token="",
+    )
+    routing = RoutingConfig(
+        pipeline_workspace=PipelineWorkspace(
+            path="C:\\workspaces\\pipeline",
+            cursor_timeout_seconds=7200,
+        ),
+        folder_routes=[
+            FolderRoute(
+                folder_token="fld_team_a",
+                qa_rule_file="rules/team_a_qa.md",
+                dataset_id="dataset_team_a",
+            )
+        ],
+    )
+    queue = FakeQueue()
+    store = RedisStateStore(redis_client=FakeStrictRedis(decode_responses=True))
+    app = create_app(
+        settings=settings,
+        routing_config=routing,
+        state_store=store,
+        queue=queue,
+    )
+    client = TestClient(app)
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+
+
+def test_oauth_callback_returns_code_and_state():
+    settings = ExecutorSettings(
+        feishu_encrypt_key="",
+        feishu_verification_token="",
+    )
+    routing = RoutingConfig(
+        pipeline_workspace=PipelineWorkspace(
+            path="C:\\workspaces\\pipeline",
+            cursor_timeout_seconds=7200,
+        ),
+        folder_routes=[
+            FolderRoute(
+                folder_token="fld_team_a",
+                qa_rule_file="rules/team_a_qa.md",
+                dataset_id="dataset_team_a",
+            )
+        ],
+    )
+    queue = FakeQueue()
+    store = RedisStateStore(redis_client=FakeStrictRedis(decode_responses=True))
+    app = create_app(
+        settings=settings,
+        routing_config=routing,
+        state_store=store,
+        queue=queue,
+    )
+    client = TestClient(app)
+    r = client.get("/oauth/callback?code=testcode&state=st")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["code"] == "testcode"
+    assert body["state"] == "st"
+
+
 def test_default_webhook_path_is_stable():
     settings = ExecutorSettings()
 
     assert settings.feishu_webhook_path == "/webhook/feishu"
 
 
-def test_webhook_uses_redis_event_seen_and_enqueues_schedule():
+def test_webhook_uses_redis_event_seen_and_enqueues_schedule(monkeypatch):
+    monkeypatch.setattr(
+        "webhook_cursor_executor.feishu_resource_plane.probe_docx_document_readable",
+        lambda _settings, _token: False,
+    )
     settings = ExecutorSettings(
         feishu_encrypt_key="",
         feishu_verification_token="",
@@ -66,10 +138,76 @@ def test_webhook_uses_redis_event_seen_and_enqueues_schedule():
     sn = store.load_snapshot("doc_1")
     assert sn is not None
     assert sn.ingest_kind == "drive_file"
+    assert sn.resource_plane == "drive_file"
     assert sn.dify_target_key == "DEFAULT"
+    assert sn.doc_type == "docx"
 
 
-def test_drive_edit_without_folder_token_enqueues_ingest_not_listing_in_http():
+def test_created_in_folder_with_folder_calls_per_doc_subscribe_hook(monkeypatch):
+    calls: list[dict] = []
+
+    def capture(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(
+        "webhook_cursor_executor.app.maybe_per_doc_subscribe_on_created_in_folder",
+        capture,
+    )
+    monkeypatch.setattr(
+        "webhook_cursor_executor.feishu_resource_plane.probe_docx_document_readable",
+        lambda _settings, _token: False,
+    )
+    settings = ExecutorSettings(
+        feishu_encrypt_key="",
+        feishu_verification_token="",
+    )
+    routing = RoutingConfig(
+        pipeline_workspace=PipelineWorkspace(
+            path="C:\\workspaces\\pipeline",
+            cursor_timeout_seconds=7200,
+        ),
+        folder_routes=[
+            FolderRoute(
+                folder_token="fld_team_a",
+                qa_rule_file="rules/team_a_qa.md",
+                dataset_id="dataset_team_a",
+            )
+        ],
+    )
+    queue = FakeQueue()
+    store = RedisStateStore(redis_client=FakeStrictRedis(decode_responses=True))
+    app = create_app(
+        settings=settings,
+        routing_config=routing,
+        state_store=store,
+        queue=queue,
+    )
+    client = TestClient(app)
+    payload = {
+        "header": {
+            "event_id": "evt_cif",
+            "event_type": "drive.file.created_in_folder_v1",
+        },
+        "event": {
+            "file_token": "new_docx",
+            "folder_token": "fld_team_a",
+            "file_type": "docx",
+        },
+    }
+    r = client.post("/webhook/feishu", json=payload)
+    assert r.status_code == 200
+    assert len(calls) == 1
+    assert calls[0]["document_id"] == "new_docx"
+    assert calls[0]["event_type"] == "drive.file.created_in_folder_v1"
+
+
+def test_drive_edit_without_folder_token_enqueues_ingest_not_listing_in_http(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "webhook_cursor_executor.feishu_resource_plane.probe_docx_document_readable",
+        lambda _settings, _token: True,
+    )
     settings = ExecutorSettings(
         feishu_encrypt_key="",
         feishu_verification_token="",
@@ -108,7 +246,9 @@ def test_drive_edit_without_folder_token_enqueues_ingest_not_listing_in_http():
     assert r.json().get("msg") == "ok"
     assert queue.calls[0][0] == "ingest_feishu_document_event"
     assert queue.calls[0][1]["document_id"] == "docx_token_1"
-    assert queue.calls[0][1]["ingest_kind"] == "drive_file"
+    assert queue.calls[0][1]["ingest_kind"] == "cloud_docx"
+    assert queue.calls[0][1]["resource_plane"] == "cloud_docx"
+    assert queue.calls[0][1].get("doc_type") is None
     assert not list(store.redis.scan_iter("webhook:event_seen:*"))
 
 
@@ -153,7 +293,7 @@ def test_drive_edit_without_folder_token_and_without_app_creds_returns_400():
     assert queue.calls == []
 
 
-def test_folder_route_fail_does_not_mark_event_seen():
+def test_folder_route_fail_does_not_mark_event_seen(monkeypatch):
     settings = ExecutorSettings(
         feishu_encrypt_key="",
         feishu_verification_token="",
@@ -191,6 +331,10 @@ def test_folder_route_fail_does_not_mark_event_seen():
     assert bad.status_code == 400
     assert not list(store.redis.scan_iter("webhook:event_seen:*"))
 
+    monkeypatch.setattr(
+        "webhook_cursor_executor.feishu_resource_plane.probe_docx_document_readable",
+        lambda _settings, _token: False,
+    )
     good = client.post(
         "/webhook/feishu",
         json={

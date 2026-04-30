@@ -109,6 +109,7 @@
 - 不要把外部已实现模块误写成本仓库内部实现。
 - 不要把一次任务运行态的上下文，误当成仓库长期静态配置。
 - 若边界不清，先补充说明，再继续设计或改动。
+- **Python `.venv`：** 在**本维护仓库**子目录（`webhook`、`onboard`、`feishu_fetch` 等）可用 **`.venv`** 做本地 pytest、`pip install -e`、调试；细则 **`.cursor/rules/anti-venv.mdc`**。**物化后的执行工作区** **禁止** 把工作区内 `.venv` 当作 Webhook、RQ、工具链 **正式** 运行时，**禁止** 将任务产出写入 venv 树。
 
 ## 后续提示词整理原则
 
@@ -118,5 +119,7 @@
 - 目标工作区的 `rules` 模板放在 `prompts/rules/`
 
 这些文件是 **待注入真实工作区的长期模板资产**，先保存在本仓库的 `prompts/` 下，由后续初始化逻辑分发到实际工作区。**执行侧上传与 `task_context` 阅读合同**以 `prompts/AGENTS.txt` 为准（物化后为工作区根 `AGENTS.md`）；本段不重复细则。
+
+**生产工作区物化目录**（含 **`tools/`** 内嵌拷贝、**`runtime/webhook/`**、**`vla_env_contract/`**（**`vla-env-contract`** 键名合同，非 feishu-onboard CLI））以 **`docs/superpowers/specs/2026-04-28-workspace-embedded-runtime-design.md`** 为准；落地跟踪 **`NiceToHave.md` NTH-008**。**Plan 落地后**须按 **`plan-landed-renew-agents-rules.mdc`** 使 **`prompts/AGENTS.txt`** 与本规格及实现一致。运维可调 **`bootstrap/README.md`**（**`install-workspace-editables`**、**`doctor`**、**`probe`**）。
 
 `task_prompt.md` 属于 webhook 侧运行时注入物，由对端模块维护，不在本仓库内作为模板资产保存。

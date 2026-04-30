@@ -16,6 +16,8 @@ class DocumentSnapshot(BaseModel):
     version: int
     dify_target_key: str = "DEFAULT"
     ingest_kind: str
+    resource_plane: str
+    doc_type: str | None = None
 
 
 class RerunMarker(BaseModel):
@@ -58,4 +60,6 @@ class TaskContext(BaseModel):
     cursor_timeout_seconds: int
     dify_target_key: str
     ingest_kind: str
+    resource_plane: str
     dataset_id_is_placeholder: bool = False
+    doc_type: str | None = None

@@ -4,6 +4,7 @@
 
 ## 修订说明
 
+- **2026-04-29（`feishu_fetch` 与 subscribe）**：抓取链路与飞书 drive「订阅事件」无关；**`feishu_fetch` 不调用** drive `subscribe`。**webhook** 侧对 **`drive.file.created_in_folder_v1`** 做 **事件驱动** tenant per-doc subscribe（见 [feishu-app-folder-onboard-design](./2026-04-26-feishu-app-folder-onboard-design.md) 修订 2026-04-29 首条、`webhook_cursor_executor.feishu_drive_subscribe`）。曾写「禁止管线内一切单文档 subscribe」之表述 **不再约束 webhook/worker**；`feishu_fetch` 仍不参与 subscribe。
 - **2026-04-27（`lark-cli docs +fetch` 参数）：** 现行已测 `lark-cli` 在 `docs +fetch --api-version v2` 下使用 **`--doc`** 传入文档 URL 或 token，**不支持** `--document-id`；`--scope` 的合法取值为 `full|outline|range|keyword|section`，**不再**使用与旧 CLI 假设相关的 **`--scope docx`**。仓库 `feishu_fetch` 子进程 argv 已改为 `--doc` + 既有 `--doc-format` / `--detail` 等，整篇读取依赖 v2 默认 `scope`。**以下正文若仍出现 `--document-id` 或 `--scope docx`，视为历史表述，以本段为准；正文不改写。**
 
 ## 1. 背景与问题

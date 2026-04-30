@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import shutil
-import sys
 from pathlib import Path
 
-from bootstrap.junction import ensure_junction
+from bootstrap.copy_trees import copy_materialize_subtree
 from bootstrap.workspace_path import validate_workspace_root_path
+
+
+def _patch_runtime_webhook_pyproject(webhook_pyproject: Path) -> None:
+    text = webhook_pyproject.read_text(encoding="utf-8")
+    patched = text.replace("file:../vla_env_contract", "file:../../vla_env_contract")
+    webhook_pyproject.write_text(patched, encoding="utf-8")
 
 
 def materialize_workspace(
     *,
     clone_root: Path,
     workspace_root: Path,
-    link_tools: bool,
     seed_env: Path | None = None,
     sync_env_from_clone: bool = False,
     dry_run: bool = False,
@@ -65,11 +69,23 @@ def materialize_workspace(
     shutil.copytree(rules_src, rules_dst)
     tools = workspace_root / "tools"
     tools.mkdir(exist_ok=True)
-    if link_tools and sys.platform == "win32":
-        ensure_junction(tools / "dify_upload", clone_root / "dify_upload")
-        ensure_junction(tools / "feishu_fetch", clone_root / "feishu_fetch")
-    elif link_tools:
-        raise RuntimeError("link_tools requires Windows")
-    else:
-        (tools / "dify_upload").mkdir(parents=True, exist_ok=True)
-        (tools / "feishu_fetch").mkdir(parents=True, exist_ok=True)
+
+    vla_src = clone_root / "vla_env_contract"
+    wh_src = clone_root / "webhook"
+    if not vla_src.is_dir():
+        raise FileNotFoundError(f"missing {vla_src}")
+    if not wh_src.is_dir():
+        raise FileNotFoundError(f"missing {wh_src}")
+
+    copy_materialize_subtree(vla_src, workspace_root / "vla_env_contract", dry_run=dry_run)
+    copy_materialize_subtree(wh_src, workspace_root / "runtime" / "webhook", dry_run=dry_run)
+    wh_toml = workspace_root / "runtime" / "webhook" / "pyproject.toml"
+    if wh_toml.is_file():
+        _patch_runtime_webhook_pyproject(wh_toml)
+
+    copy_materialize_subtree(
+        clone_root / "dify_upload", tools / "dify_upload", dry_run=dry_run
+    )
+    copy_materialize_subtree(
+        clone_root / "feishu_fetch", tools / "feishu_fetch", dry_run=dry_run
+    )
