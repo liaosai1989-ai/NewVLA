@@ -28,3 +28,12 @@ alwaysApply: true
 - `task_context.json`
 - `outputs/`
 - 可选的运行日志、结果摘要、状态标记文件
+
+## `run_id` 字面值（与 `task_context` 对齐，BUG-008）
+
+- **结构**：目录名段与 **`task_context.json` 的 `run_id` 字段** 须为 **同一字符串**。
+- **格式**：**无** UUID、时间戳或 `run_` 前缀等合同强制。
+- **生产**：webhook / 调度 **每任务新发** 低碰撞 id；算法由实现定。
+- **仓库内 JSON 样例**：可用 **固定可读** 常量（如 `bootstrap-sample-run`）做回归，**不**代表生产须同形。
+
+规范编号与样例说明的 **单一出处**：`docs/superpowers/specs/2026-04-28-task-context-bootstrap-sample-agent-contract-design.md` **§3.1**。

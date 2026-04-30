@@ -37,6 +37,7 @@ Set-Location c:\WorkPlace\NewVLA\test_tool
 - 这是临时 `trycloudflare.com` 地址，每次重启都可能变化
 - 脚本会复用仓库根目录 `.env` 里的飞书配置
 - 最近一次启动结果会写到 `test_tool\runtime\last_tunnel.json`
+- **`.venv`：** 若脚本/文档在**维护仓**用 `.venv` 起本地 webhook，**仅**调试用途；执行工作区生产启停须遵守 **`.cursor/rules/anti-venv.mdc`**（勿把工作区 `runtime/webhook/.venv` 当正式入口）
 
 ## 故障排查
 

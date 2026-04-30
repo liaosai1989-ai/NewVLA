@@ -138,9 +138,11 @@ function Wait-ForLocalWebhook {
 }
 
 function Stop-ExistingWebhookProcesses {
+    # Match by command line only: uvicorn may run under python.exe, python3.12.exe,
+    # py.exe (launcher), or venv\Scripts\python.exe — Name-only filter misses duplicates.
     $existing = Get-CimInstance Win32_Process |
         Where-Object {
-            $_.Name -eq "python.exe" -and
+            $_.CommandLine -and
             $_.CommandLine -like "*uvicorn webhook_cursor_executor.app:build_app*"
         } |
         Select-Object -ExpandProperty ProcessId

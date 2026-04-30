@@ -18,8 +18,8 @@ def test_install_workspace_editables_invokes_pip_in_order(tmp_path):
     with patch("bootstrap.install_workspace_editables.subprocess.run") as run:
         install_workspace_editables(ws)
 
-    assert run.call_count == 4
-    c0, c1, c2, c3 = run.call_args_list
+    assert run.call_count == 5
+    c0, c1, c2, c3, c4 = run.call_args_list
     assert c0 == call(
         [ANY, "-m", "pip", "install", "-e", "."],
         check=True,
@@ -28,3 +28,4 @@ def test_install_workspace_editables_invokes_pip_in_order(tmp_path):
     assert c1.kwargs["cwd"] == str(dirs[1])
     assert c2.kwargs["cwd"] == str(dirs[2])
     assert c3.kwargs["cwd"] == str(dirs[3])
+    assert c4.kwargs["cwd"] == str(dirs[0])

@@ -20,3 +20,10 @@ def install_workspace_editables(workspace: Path) -> None:
             check=True,
             cwd=str(d),
         )
+    # Installing runtime/webhook pulls vla-env-contract as a wheel dep; pip may leave
+    # vla_env_contract resolving under site-packages (doctor plan A.3 FAIL). Re-pin editable.
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-e", "."],
+        check=True,
+        cwd=str(ws / "vla_env_contract"),
+    )

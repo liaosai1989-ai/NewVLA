@@ -1,5 +1,9 @@
 # Production Bootstrap（执行工作区物化）
 
+**人话版步骤 / 命令 / 目的速查：** [`OPERATIONS.md`](OPERATIONS.md)
+
+**Python `.venv`：** **`python -m venv`、子包下 `.venv`** **仅**用于**维护仓库克隆根**本地调试、pytest、`pip install -e` 隔离（**`.cursor/rules/anti-venv.mdc`**）。**物化后的执行工作区（`VLA_WORKSPACE_ROOT`）与生产 7×24**：**禁止** 把工作区内 `.venv`（如 `runtime/webhook/.venv`）当作 Webhook、RQ、工具链的 **正式运行时**；交付形态须 **`py -3.12`** / 容器内解释器 + **`bootstrap install-workspace-editables`** 或等价，**禁止**「激活工作区 `.venv` 再启动」进正式 SOP。
+
 ## 用户验收唯一路径（签字）
 
 与 `docs/superpowers/specs/2026-04-28-production-bootstrap-deployment-design.md` §7 一致：**不得**用分立子命令替代本条作为主签字路径。
@@ -84,7 +88,7 @@ py -3.12 -m bootstrap interactive-setup
 ## 生产启动 webhook / RQ（Task 12）
 
 进程环境 **`VLA_WORKSPACE_ROOT=<与工作区根相同绝对路径>`**，使 **`ExecutorSettings`** 加载 **`{WORKSPACE}/.env`**。  
-未设置时 webhook 仍读 **克隆根** `.env`（本地 dev 对照）。
+未设置时 webhook 仍读 **克隆根** `.env`（本地 dev 对照）。**勿**以 **`{WORKSPACE}/runtime/webhook/.venv`** 为生产启停真源；见上文 **Python `.venv`** 与 **`bootstrap/OPERATIONS.md`** §3。
 
 ---
 

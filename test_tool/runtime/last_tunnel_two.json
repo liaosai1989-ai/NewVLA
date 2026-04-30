@@ -1,0 +1,8 @@
+{
+  "local_webhook": "http://127.0.0.1:8000/webhook/feishu",
+  "tunnel_a_base": "https://inclusion-municipality-poison-sandy.trycloudflare.com",
+  "tunnel_b_base": "https://quarter-drive-extending-cave.trycloudflare.com",
+  "callback_url_a": "https://inclusion-municipality-poison-sandy.trycloudflare.com/webhook/feishu",
+  "callback_url_b": "https://quarter-drive-extending-cave.trycloudflare.com/webhook/feishu",
+  "note": "同一时刻起了两条 quick tunnel 指向本机 :8000。飞书一般只填一条事件订阅 URL，另一条可作备用/对照。关隧道请结束对应 cloudflared 进程。"
+}

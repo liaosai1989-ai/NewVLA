@@ -1,10 +1,12 @@
 # feishu-onboard
 
-在管线仓库根为飞书 **App 文件夹** 做入轨：创建文件夹、对 `folder_token` 做[夹级事件订阅](https://open.feishu.cn/document/server-docs/docs/drive-v1/event/subscribe)（`file.created_in_folder_v1` 前提，与 `webhook/scripts/subscribe_byvwf_tds.py` 一致）、为「分享委托人」加云空间文件夹协作者、两阶段写根目录 `.env`，并在输入完成后对当前工作区执行 `lark-cli config init`（`--app-secret-stdin`）。
+在管线仓库根为飞书 **App 文件夹** 做入轨（CLI 通常装在**维护仓**；见下节 **`.venv`** 仅维护仓调试）：创建文件夹、对 `folder_token` 做[夹级事件订阅](https://open.feishu.cn/document/server-docs/docs/drive-v1/event/subscribe)（`file.created_in_folder_v1` 前提，与 `webhook/scripts/subscribe_byvwf_tds.py` 一致）、为「分享委托人」加云空间文件夹协作者、两阶段写根目录 `.env`，并在输入完成后对当前工作区执行 `lark-cli config init`（`--app-secret-stdin`）。
 
-## 安装
+## 安装（维护仓调试；`.venv` 不用于执行工作区生产）
 
-在仓库中：
+> **`.venv`：** 下述命令 **仅**在**维护仓库克隆根**的 `onboard/` 下做本地调试、单测、可编辑安装；详见 **`.cursor/rules/anti-venv.mdc`**。**物化后的执行工作区** **禁止** 以 `…/runtime/.../.venv` 等作 **feishu-onboard / Webhook / RQ** 的正式运行时；生产用 **`py -3.12`** 或平台镜像 + 已安装包，**禁止**将「激活工作区 `.venv` 再跑 onboard」写进正式 SOP。
+
+在**维护**仓库中：
 
 ```powershell
 cd path\to\NewVLA\onboard
@@ -172,10 +174,13 @@ feishu-onboard
 
 两阶段各一次同目录 `tmp` + `os.replace`；UTF-8 编码。Unix 临时文件模式 `0600`； Windows 为尽力缩小权限面，**以当前 OS 实际行为为准**（`chmod` 与 ACL 与 Unix 不完全等价）。
 
-## 开发
+## 开发（维护仓调试；`.venv` 不用于执行工作区生产）
+
+下列 **`.\.venv\...` 仅**在**维护仓库** `onboard/` 下使用；执行工作区见文首 **`.venv`** 说明。
 
 ```powershell
 cd onboard
+python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .[test]
 .\.venv\Scripts\python.exe -m pytest tests -v
 ```

@@ -1,4 +1,6 @@
-"""对指定云空间文件夹订阅 file.created_in_folder_v1（应用 tenant，读根 .env）。
+"""对指定云空间文件夹订阅 file.created_in_folder_v1（应用 tenant，读 .env）。
+
+读 ``.env``：仅 ``feishu_dotenv``（紧邻脚本布局那份）。
 
 新建 docx 后飞书会推该事件；后续应对该 file_token 调 docx subscribe 的逻辑应放在
 webhook/worker（收到 created_in_folder 再订），不要在本脚本里枚举夹内现有文档。
@@ -18,19 +20,10 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-ROOT = Path(__file__).resolve().parents[2]
-ENV_PATH = ROOT / ".env"
-
-
-def load_env() -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        out[k.strip()] = v.strip().strip('"').strip("'")
-    return out
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+from feishu_dotenv import load_dotenv_flat  # noqa: E402
 
 
 def main() -> int:
@@ -44,7 +37,7 @@ def main() -> int:
         )
         return 2
 
-    env = load_env()
+    env = load_dotenv_flat()
     app_id, sec = env["FEISHU_APP_ID"], env["FEISHU_APP_SECRET"]
 
     req = Request(

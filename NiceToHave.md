@@ -54,6 +54,9 @@
 | NTH-007 | 管线执行工作区物理目录初始化（与入轨解耦） | P2 | 待评估 | 2026-04-27 | - | - | **生产不在维护仓目录跑任务**，而在**专门初始化的执行工作区**；`feishu_fetch`/手册「项目根」易与维护仓 clone 重合，须与 RQ 真实 cwd 区分并桥接（见正文） |
 | NTH-008 | bootstrap 收尾：内嵌 runtime、废 junction、`doctor` 后探活与可选服务脚本 | P1 | 已实现 | 2026-04-28 | `docs/superpowers/specs/2026-04-28-workspace-embedded-runtime-design.md`（主）；`docs/superpowers/specs/2026-04-28-production-bootstrap-deployment-design.md`（**§3.4** 待 **Task 10** 对齐） | `docs/superpowers/plans/2026-04-28-workspace-embedded-runtime-implementation-plan.md`（主）；`docs/superpowers/plans/2026-04-28-production-bootstrap-deployment-implementation-plan.md`（旧版 junction §，**Task 10** 废止） | 内嵌 runtime / **`bootstrap probe`** 定型：**`doctor`** → **`probe --no-http`**；服务起后全量 **`probe`**（**`WEBHOOK_PROBE_BASE` + `/health`**）；**§10 / production-bootstrap §3.4** **未**并入本条目 closure；增量 **NTH-009** |
 | NTH-009 | 工作区 runtime / prompts 增量同步（免每次全量 bootstrap） | P3 | 待评估 | 2026-04-28 | - | - | 需求登记自 **`workspace-embedded-runtime-design.md` §5**；**无** spec/plan 前 **不**做 |
+| NTH-010 | `bootstrap interactive-setup` 人机链串联（编排后续可复用 CLI） | P3 | 待评估 | 2026-04-28 | - | - | 接受工具分段复用；缺**同一交互流内**顺序编排，与 **NTH-006**/**NTH-008** 相邻 |
+| NTH-011 | 工作区 `doctor`：pipeline 包须落工作区 — 与「同解释器混装克隆工作区 / `vla_env_contract` 被 wheel 顶掉 editable」 | P2 | 待评估 | 2026-04-28 | `docs/superpowers/specs/2026-04-28-workspace-embedded-runtime-design.md`（§4.1、§6、`doctor` plan A.3） | - | 与 **BUG-007**（`cwd`+`file:` 锚点）不同根因；见正文 |
+| NTH-012 | `materialize-workspace` 只物化运行必要树（排除测试目录、排障/一次性脚本等） | P2 | 待评估 | 2026-04-29 | - | - | 减少执行工作区体积与误触非生产文件；实现须与 `doctor`/editable 路径一致，见正文 |
 
 ## 正文记录
 
@@ -416,3 +419,97 @@
 ### 验收标准
 
 - （空）
+
+## NTH-010 `bootstrap interactive-setup` 人机链串联（编排后续可复用 CLI）
+
+- 提出时间：2026-04-28
+- 当前状态：待评估
+- 优先级：P3
+- 背景/问题：
+  - 已接受 **分段** 与 **复用既有工具**（`feishu-onboard`、`doctor`、`probe` 等）；**不顺**的是 **`interactive-setup` 仅在末尾打印提示**，未把「物化 → 可选入轨 → 自检 → 探活」收成 **一条人机链上的有序步骤**，易忘步、误以为「一条命令已全部完成」。
+  - **机密、部署侧 `VLA_WORKSPACE_ROOT`、起 Redis/webhook 进程** 仍不宜假称全自动；合理范围是 **可脚本化/可子进程化的步骤** 在**同一会话**内 **显式串联**（含 **暂停等用户登录/填表**）。
+- 目标：
+  - 在 **`bootstrap interactive-setup`**（及/或 **`--continue`** 续跑）中 **编排**：例如在 **`materialize` + `install_workspace_editables` 之后**，可选 **`subprocess` 调用 `feishu-onboard`**（仍为交互 CLI）、失败即打断并返回码清晰；再继续 **`doctor`** / **`probe`** 等与 **NTH-008** 已定链一致。
+  - 备选：**不改自动调用**，改为 **编号清单 + 可复制下一条命令**，降低心智负荷。
+- 预期收益：
+  - 运维/初始化 **单会话闭环感**；减少遗漏 **`feishu-onboard`** 或顺序错误。
+- 影响范围：
+  - **`bootstrap/src/bootstrap/interactive_setup.py`**、**`cli.py`**（新 flag 若有）、**`bootstrap/README.md`**、单测。
+  - **`onboard/`** 无需改大包边界；仅调用约定（cwd、`VLA_WORKSPACE_ROOT`）需在正文/README 写清。
+- spec 索引：`-`
+- plan 索引：`-`
+- 备注：
+  - 与 **NTH-006**（`feishu-onboard` 能力）、**NTH-008**（`doctor`→`probe` 链）相邻；**不**重复登记内嵌 runtime 与探活本身。
+
+### 方案草案
+
+- **`--with-onboard`**：物化成功后 **`check_call` 本机 `feishu-onboard` 入口**（或 `python -m`），stdin/stdout 仍接用户终端；失败非 0 则 **`interactive-setup` 非 0**。
+- 或 **交互问答**「是否现在运行入轨？」选 Y 再调起子进程。
+- **明列不串联项**：密钥填表、进程管理，仅 README/输出中 **列硬边界**。
+
+### 验收标准
+
+- 有一条可复述的 **官方推荐顺序**（代码或文档一致）；新用户不必从多处拼流程。
+- 可选 onboard 路径在 **Windows** 与 **POSIX** 下子进程退出码可区分失败/成功。
+- 不将 **秘钥写入** 或 **冒充** 已完成 feishu 侧授权。
+
+## NTH-011 工作区 `doctor`：pipeline 包须落工作区 — 与「同解释器混装克隆工作区 / `vla_env_contract` 被 wheel 顶掉 editable」
+
+- 提出时间：2026-04-28
+- 当前状态：待评估
+- 优先级：P2
+- 背景/问题：
+  - **`bootstrap doctor --workspace <WS>`** 要求 `feishu_fetch`、`dify_upload`、`webhook_cursor_executor`、`vla_env_contract` 的 **`importlib.util.find_spec` 解析路径**均落在 **`{WORKSPACE_ROOT}`** 下（plan A.3 / `doctor.py` `_workspace_import_paths_ok`）。
+  - **现象 A：** 同一 **`py -3.12`** 曾在**维护仓克隆根**对 pipeline 包做过 **`pip install -e`**，运行 `doctor` 时仍解析到 **克隆路径**，报错 **`pipeline packages must resolve under workspace root`**。
+  - **现象 B：** 在 **`{WS}/runtime/webhook`** 执行 **`pip install -e .`** 时，pip 对依赖 **`vla-env-contract @ file:../../vla_env_contract`** 可能 **再装一份 wheel 到 user `site-packages`**，使 **`vla_env_contract`** 的 **`find_spec`** 指向 **`site-packages`** 而非 **`{WS}/vla_env_contract/src/...`**，同样触发上述 ERROR；**补打** **`pip install -e {WS}/vla_env_contract`**（且宜在 webhook 装完后**最后**执行）可恢复。
+  - 与 **BUG-007**（错误 **`cwd`** 下 `file:` 路径断裂、errno 2）**不同**：本条是 **「已能装上，但解释器优先解析到仓外 / 非 editable 副本」** 的运维体验与易错点。
+- 目标：
+  - 减少 **无意混装** 与 **wheel 覆盖 editable** 的发生，或 **失败时指明**哪一个包解析到了哪条路径（便于一次看懂）。
+  - 候选方向（互斥或组合）：**`install-workspace-editables`** 固定顺序且 **装完 webhook 后强制再 `-e` 工作区 `vla_env_contract`**；**`doctor` stderr** 打印各包 `spec.origin` / 首条 `submodule_search_locations`；文档 **OPERATIONS / README** 单列「最后补 `vla_env_contract`」；pip 侧 **`--no-deps`** 或依赖元数据调整（需评估与 **BUG-007** 兼容）。
+- 预期收益：
+  - 首次物化后 **`doctor` 一次过**比例提高；排障不靠口头经验。
+- 影响范围：
+  - **`bootstrap/src/bootstrap/doctor.py`**、**`install_workspace_editables`（若有）**、**`bootstrap/README.md` / `bootstrap/OPERATIONS.md`**
+- spec 索引：
+  - `docs/superpowers/specs/2026-04-28-workspace-embedded-runtime-design.md`（§4.1 四处 `pip install -e`、§6 `doctor`）
+- plan 索引：`-`
+- 备注：
+  - 与 **NTH-008**（内嵌 runtime / `doctor` 已落地）相邻：属 **已落地能力上的易用性/鲁棒性** 缺口，**不**重复登记「内嵌树」本身。
+
+### 方案草案
+
+- **`doctor` 失败时**：对四个包各打一行 **实际解析路径** + 是否 **`_path_is_under_workspace`**，避免只给泛化 ERROR。
+- **`install-workspace-editables` 收尾**：在 **`runtime/webhook`** 之后 **无条件再执行** **`pip install -e {workspace}/vla_env_contract`**（或与 pip 行为对齐的等价物）。
+- 文档：**手册「四处安装」后加粗一句** — 若装过 webhook 仍报 `vla_env_contract` 不在工作区，**再对工作区根 `vla_env_contract` 执行一次 `-e`**。
+
+### 验收标准
+
+- 在「干净 user site-packages + 仅按文档工作区四处安装」路径下，**不**需人工发现「最后补 `vla_env_contract`」即可通过 `doctor`；**或** 文档与 CLI 输出使该步骤 **显式、不可漏**。
+- 与 **BUG-007** 已修复路径 **无**冲突表述（`cwd` 锚点仍须正确）。
+
+## NTH-012 `materialize-workspace` 只物化运行必要树（排除测试目录、排障/一次性脚本等）
+
+- 提出时间：2026-04-29
+- 当前状态：待评估
+- 优先级：P2
+- 背景/问题：
+  - 现 **`copy_materialize_subtree` / `materialize-workspace`** 从克隆整树拷入执行工作区，**`tests/`**、**`__pycache__`**、维护侧 **一次性排障/验证脚本** 等一并过去，执行区臃肿且易误导（非生产入口）。
+- 目标：
+  - 物化白名单或忽略规则：**仅**运行与 `install-workspace-editables` / **`doctor`** 所需源码与元数据（**`pyproject.toml`、`src/`、包内非测资源**等）；**默认不拷** **`tests/`**、**`.pytest_cache`**、明显 **dev-only** 脚本（具体名单落地时与克隆树对照校准）。
+- 预期收益：
+  - 工作区更小、更清晰；降低误运行维护仓测试树的风险。
+- 影响范围：
+  - **`bootstrap/src/bootstrap/copy_trees.py`**（或 **`materialize.py`**）、**`bootstrap/tests/test_materialize.py`**、必要时 **production-bootstrap** 文档中「物化产物」描述。
+- spec 索引：`-`
+- plan 索引：`-`
+- 备注：
+  - 须与 **NTH-008 / workspace-embedded-runtime**：工作区内 **仍**能 **`pip install -e`** 与 import；若某包测试目录被 tooling 误依赖需单列例外。
+
+### 方案草案
+
+- 扩展 **`materialize_copy_ignore`**（或等价）：`tests`、`__pycache__`、`.pytest_cache`、按需 `scripts/` 子集。
+- **CI/验收**：`test_materialize` 断言 **目标树无** `tests/` 或抽样 `webhook` **无** `tests/`。
+
+### 验收标准
+
+- 干净物化后执行区 **无**（或文档声明的极少数例外下 **无**）克隆侧 **`tests/`** 目录；**`doctor` + 生产起服务路径** 不受影响。

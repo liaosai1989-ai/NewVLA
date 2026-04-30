@@ -18,6 +18,7 @@ def test_document_snapshot_allows_default_dify_target_for_legacy_json():
             "received_at": "2026-04-28T00:00:00+00:00",
             "version": 1,
             "ingest_kind": "drive_file",
+            "resource_plane": "drive_file",
         }
     )
     assert s.dify_target_key == "DEFAULT"
@@ -39,9 +40,13 @@ def test_task_context_requires_ingest_kind_and_dify_target_key():
         received_at="2026-04-28T00:00:00+00:00",
         cursor_timeout_seconds=7200,
         ingest_kind="drive_file",
+        resource_plane="drive_file",
         dify_target_key="DEFAULT",
     )
     TaskContext.model_validate({**base, "dataset_id_is_placeholder": False})
     bad = {k: v for k, v in base.items() if k != "ingest_kind"}
     with pytest.raises(ValidationError):
         TaskContext.model_validate(bad)
+    bad_plane = {k: v for k, v in base.items() if k != "resource_plane"}
+    with pytest.raises(ValidationError):
+        TaskContext.model_validate({**bad_plane, "dataset_id_is_placeholder": False})

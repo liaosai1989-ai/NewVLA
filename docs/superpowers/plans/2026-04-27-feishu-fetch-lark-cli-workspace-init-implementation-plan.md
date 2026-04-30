@@ -2,6 +2,8 @@
 
 > **落地状态：已落地**（2026-04-27；实现与下文 Task 1–6 及自检表一致，代码见仓库 `feishu_fetch/`、`onboard/操作手册.md` cwd 段、`BugList.md` BUG-001 包内核对。）
 
+> **修订（2026-04-29，`feishu_fetch` 与 subscribe）：** `feishu_fetch` **不**调用飞书 drive `subscribe`。**Webhook** 对 `created_in_folder` 事件驱动 per-doc subscribe，见 [feishu-app-folder-onboard-design](../specs/2026-04-26-feishu-app-folder-onboard-design.md) 2026-04-29 首条修订、`BugList` BUG-006。
+
 > **修订（2026-04-27 后续）：** 下文若仍出现「`settings.lark_cli_command` / 从 `.env` 读 `LARK_CLI_COMMAND`」字句，以**本段为准**覆盖：根 `.env` **禁止**再写 `LARK_CLI_COMMAND`（`load_feishu_fetch_settings` 见键即 **`ValueError`**）；`FeishuFetchSettings` **不含** `lark_cli_command`；`facade` 子进程固定经 `PATH` 解析命令名 **`lark-cli`**（实现为模块内 `_LARK_CLI`，非用户可配项）。详见仓库 `feishu_fetch/src/feishu_fetch/config.py`、`facade.py`。
 
 > **修订（2026-04-27，`cloud_docx` argv）：** 下文或自检表若仍写 `docs +fetch` 的 **`--document-id`** / **`--scope docx`**，以**本段为准**覆盖：现行 `lark-cli` 使用 **`--doc`**（文档 URL 或 token）；**不使用** `--document-id`；**不使用** `--scope docx`（整篇读取依 v2 默认 `scope`）。实现见 `feishu_fetch/src/feishu_fetch/facade.py` 及同目录测试/fixture。**正文任务步骤不改写。**

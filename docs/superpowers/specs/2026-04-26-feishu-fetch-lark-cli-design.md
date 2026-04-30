@@ -2,9 +2,15 @@
 
 > **落地状态：已落地**（2026-04-28；与仓库 `feishu_fetch/` 一致；初始化层合同见已落地 `2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md`。）
 
-## 修订说明（2026-04-26 单应用 bot 抓取前提补充）
+## 修订说明
 
 本文件以下正文保留原文，不直接改写原设计内容。
+
+### 2026-04-29（`feishu_fetch` 与 subscribe）
+
+- `feishu_fetch` **不**参与飞书 drive「订阅云文档事件」OpenAPI。**Webhook/worker** 对 **`drive.file.created_in_folder_v1`** 做 **事件驱动** tenant per-doc subscribe（见 [feishu-app-folder-onboard-design](2026-04-26-feishu-app-folder-onboard-design.md) 修订 2026-04-29 首条）。**禁止**夹内历史全量枚举 subscribe 仍属合同边界；`feishu_fetch` 仍不调 `subscribe`。
+
+### 2026-04-26（单应用 bot 抓取前提补充）
 
 针对后续确认的 `lark-cli` 工作区初始化口径，现补充以下修订说明；若与正文旧表述冲突，以本修订说明为准：
 
@@ -14,7 +20,7 @@
 - 若目标文档对该应用不可访问，应按“应用权限不足”处理，而不是在 `feishu_fetch` 运行时切换应用身份兜底
 - `feishu_fetch` 不负责推断当前请求应绑定哪个飞书应用；相关初始化边界以 [2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md](file:///c:/WorkPlace/NewVLA/docs/superpowers/specs/2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md) 为准
 
-## 修订说明（2026-04-27 `lark-cli docs +fetch` 参数）
+### 2026-04-27（`lark-cli docs +fetch` 参数）
 
 - 现行 `lark-cli`：`docs +fetch --api-version v2` 使用 **`--doc <URL|token>`** 指定文档；**无** `--document-id` 标志。
 - 仓库实现已同步：`feishu_fetch` `facade` 对 `cloud_docx` 传 `--doc`；**去掉** `--scope docx`（整篇读取用 v2 默认 `scope`）。

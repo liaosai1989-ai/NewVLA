@@ -165,8 +165,14 @@ def run_doctor(clone_root: Path, workspace: Path) -> int:
     if sys.version_info < (3, 12):
         print("ERROR: Python >= 3.12 required for bootstrap doctor.", file=sys.stderr)
         return 1
-    if not shutil.which("cursor"):
-        print("ERROR: `cursor` not found on PATH.", file=sys.stderr)
+    if not shutil.which("agent"):
+        print(
+            "ERROR: `agent` (Cursor Agent CLI) not found on PATH. "
+            "Webhook/RQ launch jobs require `agent -p`, not the desktop `cursor` launcher. "
+            "Install: https://cursor.com/docs/cli/overview (Windows: "
+            "irm 'https://cursor.com/install?win32=true' | iex).",
+            file=sys.stderr,
+        )
         return 1
     if not shutil.which("lark-cli"):
         print("ERROR: `lark-cli` not found on PATH.", file=sys.stderr)

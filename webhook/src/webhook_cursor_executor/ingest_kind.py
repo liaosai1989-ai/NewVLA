@@ -4,26 +4,23 @@ from typing import Any
 
 
 def derive_ingest_kind(event: dict[str, Any], header: dict[str, Any]) -> str:
-    """Map Feishu callback payload to ``feishu_fetch`` ingest kind.
+    """Map Feishu callback ``event_type`` to ``feishu_fetch`` ingest kind **仅**非 ``drive.file.*``。
 
-    Convention (single source for app + HTTP enqueue; worker must use RQ arg):
+    ``drive.file.*`` 须走 ``resolve_drive_file_ingest()``（OpenAPI 探测 ``document_id`` 是否为云文档）。
 
-    - ``drive.file.*`` (header or event ``event_type``) → ``drive_file``.
-    - Cloud doc / wiki style events → ``cloud_docx`` when ``event_type`` starts
-      with ``docx.`` or contains the substring ``wiki`` (case-insensitive), matching
-      Feishu doc/wiki subscriber naming in this codebase.
-    - Any other ``event_type`` → :class:`ValueError` (caller should map to HTTP 4xx).
-
-    ``event_type`` is read from ``header`` first, then ``event``.
+    - ``docx.*`` / event_type 含 ``wiki`` → ``cloud_docx``
+    - 其它 → :class:`ValueError`
     """
     ev = event if isinstance(event, dict) else {}
     hdr = header if isinstance(header, dict) else {}
     et = str(hdr.get("event_type") or ev.get("event_type") or "").strip()
     if not et:
         raise ValueError("missing event_type for ingest_kind derivation")
-    lower = et.lower()
     if et.startswith("drive.file."):
-        return "drive_file"
+        raise ValueError(
+            "drive.file.* must use resolve_drive_file_ingest(), not derive_ingest_kind()"
+        )
+    lower = et.lower()
     if et.startswith("docx.") or "wiki" in lower:
         return "cloud_docx"
     raise ValueError(f"unknown event_type for ingest_kind: {et!r}")

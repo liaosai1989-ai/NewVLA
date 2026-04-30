@@ -16,10 +16,15 @@ logger = logging.getLogger(__name__)
 
 
 def _env_file() -> Path:
-    raw = os.environ.get("VLA_WORKSPACE_ROOT", "").strip()
-    if raw:
-        return Path(raw).expanduser().resolve() / ".env"
-    return Path(__file__).resolve().parents[3] / ".env"
+    """就近 ``.env``：与包安装位置同源（克隆根或工作区根）。不读进程 ``VLA_WORKSPACE_ROOT`` 抢路径。"""
+    here = Path(__file__).resolve()
+    for depth in (3, 4):
+        if len(here.parents) <= depth:
+            continue
+        cand = (here.parents[depth] / ".env").resolve()
+        if cand.is_file():
+            return cand
+    return (here.parents[3] / ".env").resolve()
 
 
 def _raise_if_env_file_bans_cursor_cli_command(*, path: Path) -> None:
@@ -33,7 +38,7 @@ def _raise_if_env_file_bans_cursor_cli_command(*, path: Path) -> None:
         if s.split("=", 1)[0].strip() == "CURSOR_CLI_COMMAND":
             raise ValueError(
                 "根 .env 含已废弃键 CURSOR_CLI_COMMAND，请整行删除；"
-                "webhook 子进程只使用命令名 cursor（由 PATH 解析，不经 .env 配置可执行路径）"
+                "webhook 子进程只使用 PATH 上的 Cursor Agent CLI（命令名 agent）"
             )
 
 
@@ -118,6 +123,12 @@ class ExecutorSettings(BaseSettings):
         default=7200,
         alias="CURSOR_RUN_TIMEOUT_SECONDS",
     )
+    # worker 内 ingest（无 folder_token）专用：窗口内同一 document_id 合并为一次 version/schedule。
+    # 0 表示关闭（与历史行为一致）；建议生产 60–120 以合并飞书连续 edit 事件。
+    feishu_ingest_debounce_seconds: int = Field(
+        default=0,
+        alias="FEISHU_INGEST_DEBOUNCE_SECONDS",
+    )
 
     folder_routes_file: str = Field(
         default=str(
@@ -136,14 +147,16 @@ class ExecutorSettings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_bounds(self) -> "ExecutorSettings":
+        if self.feishu_ingest_debounce_seconds < 0:
+            raise ValueError("FEISHU_INGEST_DEBOUNCE_SECONDS must be >= 0")
         if self.doc_runlock_ttl_seconds < self.cursor_run_timeout_seconds:
             raise ValueError(
                 "DOC_RUNLOCK_TTL_SECONDS must be >= CURSOR_RUN_TIMEOUT_SECONDS"
             )
         if os.environ.get("CURSOR_CLI_COMMAND"):
             raise ValueError(
-                "已废弃：环境变量 CURSOR_CLI_COMMAND 不得再设置。webhook 只使用命令名 "
-                "cursor，由 PATH 解析。请从环境/部署配置中删除该键。"
+                "已废弃：环境变量 CURSOR_CLI_COMMAND 不得再设置。webhook 子进程使用 PATH 上的 "
+                "Cursor Agent CLI（命令名 agent，非桌面启动器 cursor）。请从环境/部署配置中删除该键。"
             )
         _raise_if_env_file_bans_cursor_cli_command(path=_env_file())
         return self

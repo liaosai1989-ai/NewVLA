@@ -11,23 +11,28 @@ alwaysApply: true
 
 它们不负责定义整条飞书到 Dify 管线的全部流程，也不替代顶层 `AGENTS.md` 的主编排职责。
 
+## 与当轮任务书的关系（优先）
+
+- 与本仓库 **当轮** **`.cursor_task/{run_id}/task_prompt.md`**（**Task 1–6**）或 **`task_context.json`** **冲突时，以任务书与 JSON 为准**；本文件不覆盖任务书步骤。
+- **路径、文件名、Task 顺序**的**唯一细纲**：**任务书**——本节只作 QA 总则与索引。
+
 ## 何时读取 QA 规则
 
-只有在以下条件同时满足时，主代理才应读取并应用 QA 规则：
+本管线单次任务 **默认**：在 **`task_context.json` 含有 `qa_rule_file`** 且当轮 **`task_prompt.md`** 要求走 QA/CSV（见 **Task 1、3–4**）时，必须读取并应用 QA 规则，**不因**旧版「仅获取正文可跳过 QA」的措辞而作另一解释——除非**同轮** **`task_prompt`/`task_context` 明示**不适用（当前任务书未给该缺口）。
 
-1. `task_context.json` 中存在 `qa_rule_file`
-2. 当前任务确实需要产出可直接上传的 QA CSV 文件
+若存在非本管线默认场景的跑法，仅以当轮 **`task_prompt`/`task_context` 明示**为准。
 
-若任务只需要获取正文、做简单整理、或直接上传原始内容，则不应机械进入 QA 抽取流程。
+## 读取顺序（与任务书对齐）
 
-## 读取顺序
+**若以下与当轮 `task_prompt.md` 中 Task 1–6 冲突，一律以任务书为准。**
 
-处理一次具体任务时，建议按以下顺序理解 QA 相关规则：
+建议顺序：
 
-1. 先读 `.cursor_task/{run_id}/task_context.json`
-2. 再读本文件
-3. 再读 `rules/qa/base/` 下的通用 QA 基础规则
-4. 最后读 `task_context.json` 中命中的 `qa_rule_file`
+1. **`.cursor_task/{run_id}/task_context.json`**
+2. **`task_context` 所载 `qa_rule_file`**（相对工作区根）
+3. **`rules/qa/base/`**（如 **`output_contract.mdc`、`quality_checks.mdc`**）——引用方式以任务书 Task 3–4 为准
+4. 本文件 **`rules/00_qa_rule_usage.mdc`**（总览）
+5. 其余 **`rules/`** 按需
 
 ## 静态规则与运行时配置分离
 
@@ -58,6 +63,7 @@ alwaysApply: true
 4. 不得把 QA 规则扩展成整个任务的全局硬编码流程。
 5. 不得把一次任务运行时的参数回写到长期规则文件中。
 6. 最终验收对象是可上传的 CSV 文件，而不是中间 JSON 结构。
+7. **可上传 CSV 的文件名、路径与列级合同**：**唯一细纲为当轮 `task_prompt` Task 3** 与 **`rules/qa/base/output_contract.mdc`** / 任务书引用的质检规则；**禁止**用别名单文件替代任务书规定的 **`{run_id}.csv`** 路径作为最终上传源。
 
 ## 多 folder 规则
 

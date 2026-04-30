@@ -2,6 +2,8 @@
 
 > **落地状态：已落地**（2026-04-28；正文抓取实现见 `feishu_fetch/src/`；`lark-cli` 工作区初始化边界见已落地 `2026-04-26-feishu-fetch-lark-cli-workspace-init-design.md` 与 `feishu_fetch/README.md`。）
 
+> **修订（2026-04-29，`feishu_fetch` 与 subscribe）：** `feishu_fetch` **不**调用 drive `subscribe`。**Webhook** 事件驱动 per-doc subscribe 见 [feishu-app-folder-onboard-design](../specs/2026-04-26-feishu-app-folder-onboard-design.md) 修订 2026-04-29 首条、`BugList` BUG-006。曾写「管线禁止一切单文档 subscribe」**不约束** webhook。
+
 > **修订（2026-04-27，`cloud_docx` 与 `lark-cli`）：** 若下文任务或示例仍出现 `docs +fetch` 的 **`--document-id`** 或 **`--scope docx`**，以**本段为准**覆盖：现行 CLI 为 **`--doc <URL|token>`**；无 `--document-id`；整篇读取不依赖 `scope=docx`。仓库真源为 `feishu_fetch/src/feishu_fetch/facade.py`。**以下正文不改写。**
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
